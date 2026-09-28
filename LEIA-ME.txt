@@ -1,0 +1,11 @@
+VIRAL STUDIO RENDER PC — gratuito
+
+1. No Windows, clique duas vezes em INSTALAR-E-INICIAR.bat.
+2. Na primeira vez ele instala Node.js e FFmpeg (se necessário) e baixa o Cloudflare Tunnel.
+3. Deixe as duas janelas abertas enquanto estiver produzindo conteúdo.
+4. Copie a URL HTTPS que termina em trycloudflare.com mostrada na janela do túnel.
+5. No iPhone, abra Viral Studio > Central de Originais > MOTOR PC.
+6. Cole a URL e aguarde a mensagem "Motor PC conectado".
+7. Selecione os vídeos e gere normalmente. O computador faz o trabalho pesado; o celular recebe os MP4 prontos.
+
+IMPORTANTE: o Quick Tunnel gratuito pode gerar uma URL nova quando você fechar e abrir o programa. Se isso acontecer, cole a nova URL no botão MOTOR PC.
