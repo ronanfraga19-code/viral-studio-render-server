@@ -1,8 +1,8 @@
-# Viral Studio Render Server
-Servidor simples para renderização do Viral Studio com FFmpeg.
+# Viral Studio Render Server — Auto Pair
 
-## API
-- `GET /health` — teste de saúde
-- `POST /render` — multipart/form-data, envie os trechos na ordem desejada usando o campo `clips`.
+Além do renderizador, esta versão possui um registro temporário do Motor PC:
 
-O retorno de `/render` é um MP4 pronto para download.
+- `POST /motor/register` — heartbeat do computador
+- `GET /motor/current/:pairId` — descoberta automática pelo celular
+
+O registro expira rapidamente quando o computador é desligado. O Motor PC renova automaticamente enquanto estiver aberto.
