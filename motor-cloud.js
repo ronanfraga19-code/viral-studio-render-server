@@ -11,7 +11,7 @@ for(const d of [RAW,NORM,OUT,TMP])fs.mkdirSync(d,{recursive:true});
 const upload=multer({dest:TMP,limits:{fileSize:2*1024*1024*1024,files:1}});
 const jobs=new Map(), queue=[];let active=0;
 const signatures=new Map();
-const MAX_CONCURRENCY=Math.max(1,Math.min(Number(process.env.VS_CONCURRENCY)||3,Math.max(1,(os.cpus()||[]).length-1)));
+const MAX_CONCURRENCY=1; // V6.2: Render Free - apenas 1 FFmpeg por vez
 const normLocks=new Map();
 
 function safeId(v){v=String(v||'').toLowerCase().replace(/[^a-z0-9_-]/g,'');return v.length>=8&&v.length<=128?v:null}
@@ -25,7 +25,7 @@ function runInput(bin,args,input){return new Promise((ok,no)=>{const p=spawn(bin
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
 
 app.get('/',(_q,r)=>r.json({ok:true,service:'Viral Studio Render PC',version:'5.8',maxBatch:100,concurrency:MAX_CONCURRENCY,mode:'creative-multiplier'}));
-app.get('/health',(_q,r)=>r.json({ok:true,engine:'cloud',version:'6.0',maxBatch:100,concurrency:MAX_CONCURRENCY,active,queued:queue.length}));
+app.get('/health',(_q,r)=>r.json({ok:true,engine:'cloud',version:'6.2',maxBatch:100,concurrency:MAX_CONCURRENCY,active,queued:queue.length}));
 app.get('/assets/:id',(req,res)=>{const id=safeId(req.params.id);if(!id)return res.status(400).json({ok:false});res.json({ok:true,exists:fs.existsSync(rawPath(id))||fs.existsSync(normPath(id)),normalized:fs.existsSync(normPath(id))})});
 app.post('/assets',upload.single('clip'),(req,res)=>{const id=safeId(req.body.id);if(!id||!req.file){if(req.file)cleanFile(req.file.path);return res.status(400).json({error:'ID ou arquivo inválido'})}
  const dest=rawPath(id);try{if(fs.existsSync(dest))cleanFile(req.file.path);else fs.renameSync(req.file.path,dest);res.json({ok:true,id,cached:true})}catch(e){cleanFile(req.file.path);res.status(500).json({error:'Falha ao guardar arquivo',detail:e.message})}});
@@ -227,5 +227,5 @@ app.get('/jobs/:id/file',(req,res)=>{const j=jobs.get(String(req.params.id)),p=o
 
 setInterval(()=>{const cutoff=Date.now()-8*60*60*1000;for(const [id,j] of jobs){if((j.finishedAt||j.createdAt)<cutoff&&['ready','error'].includes(j.status)){jobs.delete(id);cleanFile(outPath(id))}}},30*60*1000).unref?.();
 const PORT=Number(process.env.PORT||10000);
-const server=app.listen(PORT,'0.0.0.0',()=>console.log(`Viral Studio Motor Cloud V6.1 pronto na porta ${PORT} — Gancho + Corpo + CTA — fila até 100 — ${MAX_CONCURRENCY} renderizações paralelas`));
+const server=app.listen(PORT,'0.0.0.0',()=>console.log(`Viral Studio Motor Cloud V6.2 pronto na porta ${PORT} — Gancho + Corpo + CTA — fila até 100 — ${MAX_CONCURRENCY} renderizações paralelas`));
 server.requestTimeout=30*60*1000;server.headersTimeout=31*60*1000;server.keepAliveTimeout=65000;
