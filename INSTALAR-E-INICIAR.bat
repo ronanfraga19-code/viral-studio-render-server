@@ -1,17 +1,16 @@
 @echo off
 chcp 65001 >nul
-title Viral Studio Render PC - Instalacao
 cd /d "%~dp0"
-echo === VIRAL STUDIO RENDER PC ===
+title Instalador Viral Studio Motor PC V3.1
+ echo === VIRAL STUDIO MOTOR PC V3.1 - AUTOMATICO ===
 where winget >nul 2>&1 || (echo Winget nao encontrado. Instale App Installer pela Microsoft Store.& pause & exit /b 1)
 where node >nul 2>&1 || winget install OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements
 where ffmpeg >nul 2>&1 || winget install Gyan.FFmpeg --accept-source-agreements --accept-package-agreements
 if not exist cloudflared.exe powershell -NoProfile -Command "Invoke-WebRequest -Uri 'https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe' -OutFile 'cloudflared.exe'"
-call npm install
-start "Viral Studio Motor" cmd /k "cd /d %~dp0 && node server.js"
-timeout /t 3 >nul
+call npm install --omit=dev
+powershell -NoProfile -Command "$s=(New-Object -COM WScript.Shell).CreateShortcut([Environment]::GetFolderPath('Startup')+'\Viral Studio Motor PC.lnk');$s.TargetPath='%~dp0INICIAR-MOTOR-PC.bat';$s.WorkingDirectory='%~dp0';$s.Save()"
 echo.
-echo Abrindo tunel seguro gratuito. COPIE a URL https://....trycloudflare.com que aparecer.
-echo Cole essa URL no botao MOTOR PC do Viral Studio pelo celular.
+echo Instalado. O Motor PC tambem iniciara automaticamente com o Windows.
+echo O celular encontrara o PC automaticamente; nao precisa copiar URL.
 echo.
-cloudflared.exe tunnel --url http://localhost:10000
+call "%~dp0INICIAR-MOTOR-PC.bat"
