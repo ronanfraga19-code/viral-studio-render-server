@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: viral-studio-motor-cloud
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: MAX_CONCURRENCY
+        value: 1
