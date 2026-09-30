@@ -1,15 +1,4 @@
-VIRAL STUDIO — MOTOR CLOUD V6.1 LIMPO
-
-Envie para a raiz do GitHub SOMENTE estes arquivos:
-- Dockerfile
-- package.json
-- motor-cloud.js
-- render.yaml
-- .dockerignore
-
-O arquivo principal agora se chama motor-cloud.js para não confundir com servidor.js/server.js antigos.
-No Render use:
-- Language: Docker
-- Branch: principal (se esta for a branch do seu repositório)
-- Root Directory: vazio
-- Plano: Free para o primeiro teste
+Viral Studio Motor Cloud V6.4 CLEAN
+Somente Gancho + Corpo + CTA.
+Sem Diretor IA, Ollama, Python ou PowerShell.
+No GitHub, substitua os arquivos anteriores por estes e aguarde o Render fazer o deploy automático.
