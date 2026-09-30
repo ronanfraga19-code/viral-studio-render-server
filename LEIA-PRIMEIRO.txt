@@ -1,4 +1,1 @@
-Viral Studio Motor Cloud V6.4 CLEAN
-Somente Gancho + Corpo + CTA.
-Sem Diretor IA, Ollama, Python ou PowerShell.
-No GitHub, substitua os arquivos anteriores por estes e aguarde o Render fazer o deploy automático.
+V6.5 COPYFAST: feito para Render Free. Não recodifica vídeo. Primeiro tenta concatenação direta; depois remux MPEG-TS sem reencode. Se Gancho/Corpo/CTA tiverem formatos diferentes, falha rápido e mostra o erro no app.

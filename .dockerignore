@@ -1,7 +1,4 @@
 node_modules
-*.zip
-*.bat
-*.ps1
-*.py
-*.txt
-.git
+data
+*.log
+.DS_Store
