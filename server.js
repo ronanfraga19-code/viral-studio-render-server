@@ -541,10 +541,10 @@ function realPrompt(dna,variant,duration,index,audioMode='ambient',visualCopy={}
 async function generateRealVideo(prompt,duration,dest){
   if(!REAL_AI_KEY_VALID)throw new Error('Chave da IA Real inválida. No Render, use a chave real completa em POLLINATIONS_API_KEY; não use sk_..., sk_… ou texto de exemplo.');
   const d=Math.max(4,Math.min(10,Number(duration)||8));
-  const url='https://gen.pollinations.ai/video/'+encodeURIComponent(prompt)+'?model='+encodeURIComponent(REAL_AI_VIDEO_MODEL)+'&duration='+encodeURIComponent(d);
+  const url='https://gen.pollinations.ai/video/'+encodeURIComponent(prompt)+'?model='+encodeURIComponent(REAL_AI_VIDEO_MODEL)+'&duration='+encodeURIComponent(d)+'&key='+encodeURIComponent(REAL_AI_KEY);
   const c=new AbortController(), timer=setTimeout(()=>c.abort(),12*60*1000);
   try{
-    const r=await fetch(url,{headers:{'Authorization':'Bearer '+REAL_AI_KEY,'Accept':'video/mp4,application/octet-stream'},signal:c.signal});
+    const r=await fetch(url,{headers:{'Authorization':'Bearer '+REAL_AI_KEY,'Accept':'video/mp4,application/octet-stream'},redirect:'follow',signal:c.signal});
     if(!r.ok)throw new Error('Gerador IA respondeu HTTP '+r.status+': '+safeText(await r.text(),500));
     const ct=String(r.headers.get('content-type')||'');
     if(!ct.includes('video')&&!ct.includes('octet-stream'))throw new Error('Gerador IA não retornou MP4: '+ct);
@@ -595,7 +595,7 @@ async function processAIJob(job){
 function aiPump(){while(aiActive<1&&aiQueue.length){const id=aiQueue.shift(),j=aiJobs.get(id);if(!j||j.status!=='queued')continue;aiActive++;processAIJob(j).finally(()=>{aiActive--;aiPump()})}}
 app.get('/ai-real/status',(_q,res)=>{
   const message=REAL_AI_KEY_VALID?'IA Real pronta':REAL_AI_KEY_TYPE==='publishable'?'A chave configurada é pk_. Para o backend do Render, use uma chave secreta sk_ da Pollinations.':REAL_AI_KEY_TYPE==='missing'?'POLLINATIONS_API_KEY não foi definida no Render.':'POLLINATIONS_API_KEY inválida ou incompleta.';
-  res.json({ok:true,version:'10.2',mode:'mobile-upload-ai-real',configured:REAL_AI_KEY_VALID,keyPresent:Boolean(REAL_AI_KEY),keyType:REAL_AI_KEY_TYPE,message,videoModel:REAL_AI_VIDEO_MODEL,visionModel:REAL_AI_VISION_MODEL,originalFramesReused:false,audio:'ambient-default',audioModes:['ambient','silent','vendedora'],mobileReferenceFrames:true,downloadRoute:'/ai-real/jobs/:id/file?download=1'});
+  res.json({ok:true,version:'10.3',mode:'mobile-upload-ai-real',configured:REAL_AI_KEY_VALID,keyPresent:Boolean(REAL_AI_KEY),keyType:REAL_AI_KEY_TYPE,message,videoModel:REAL_AI_VIDEO_MODEL,visionModel:REAL_AI_VISION_MODEL,originalFramesReused:false,audio:'ambient-default',audioModes:['ambient','silent','vendedora'],mobileReferenceFrames:true,downloadRoute:'/ai-real/jobs/:id/file?download=1'});
 });
 app.post('/ai-real/analyze',async(req,res)=>{
  try{
