@@ -62,8 +62,8 @@ function runOut(bin,args){return new Promise((ok,no)=>{const p=spawn(bin,args,{s
 function runInput(bin,args,input){return new Promise((ok,no)=>{const p=spawn(bin,args,{stdio:['pipe','pipe','pipe'],windowsHide:true});let out='',err='';p.stdout.on('data',d=>out+=d);p.stderr.on('data',d=>err+=d);p.on('error',no);p.on('close',c=>c===0?ok(out.trim()):no(new Error(err||out||bin+' '+c)));p.stdin.end(input)})}
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
 
-app.get('/',(_q,r)=>r.json({ok:true,service:'Viral Studio Motor Cloud',version:'8.2',maxBatch:20,concurrency:MAX_CONCURRENCY,mode:'cloud-render'}));
-app.get('/health',(_q,r)=>r.json({ok:true,service:'Viral Studio Motor Cloud',engine:'cloud',version:'8.2',mode:'cloud-render',maxBatch:20,concurrency:MAX_CONCURRENCY,active,queued:queue.length,storage:storageSummary(),capabilities:{linkMp4:true,linkInfo:true,linkAnalyze:true,batchZip:false,autoCleanup:true,mobile720p:true,uploadMp4:true}}));
+app.get('/',(_q,r)=>r.json({ok:true,service:'Viral Studio Motor Cloud',version:'8.3',maxBatch:20,concurrency:MAX_CONCURRENCY,mode:'cloud-render'}));
+app.get('/health',(_q,r)=>r.json({ok:true,service:'Viral Studio Motor Cloud',engine:'cloud',version:'8.3',mode:'cloud-render',maxBatch:20,concurrency:MAX_CONCURRENCY,active,queued:queue.length,storage:storageSummary(),capabilities:{linkMp4:true,linkInfo:true,linkAnalyze:true,batchZip:false,autoCleanup:true,mobile720p:true,uploadMp4:true}}));
 app.get('/storage',(_q,r)=>r.json({ok:true,...storageSummary()}));
 app.post('/storage/cleanup',(_q,r)=>{const freed=cleanupStorage(true);r.json({ok:true,freedMB:Math.round(freed/1024/1024),...storageSummary()})});
 function isTikTokUrl(v){
@@ -134,9 +134,10 @@ app.post('/tiktok/link-source',async(req,res)=>{
     // 1) movimento mais rico; 2) movimento simples; 3) base estática.
     const frames=Math.max(1,Math.round(duration*30));
     const attempts=[
-      ['-y','-hide_banner','-loglevel','error','-loop','1','-i',img,'-t',String(duration),'-vf',`scale=854:1518:force_original_aspect_ratio=increase,crop=720:1280:(iw-720)/2:(ih-1280)/2,zoompan=z=min(zoom+0.0008\\,1.10):x=iw/2-(iw/zoom/2)+sin(on/18)*6:y=ih/2-(ih/zoom/2)+cos(on/22)*6:d=${frames}:s=720x1280:fps=30,eq=contrast=1.03:saturation=1.05,format=yuv420p`,'-an','-c:v','libx264','-preset','ultrafast','-crf','23','-pix_fmt','yuv420p','-movflags','+faststart',out],
-      ['-y','-hide_banner','-loglevel','error','-loop','1','-i',img,'-t',String(duration),'-vf','scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,setsar=1,fps=30,format=yuv420p','-an','-c:v','libx264','-preset','ultrafast','-crf','24','-pix_fmt','yuv420p','-movflags','+faststart',out],
-      ['-y','-hide_banner','-loglevel','error','-loop','1','-i',img,'-t',String(duration),'-vf','scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2:black,setsar=1,fps=24,format=yuv420p','-an','-c:v','libx264','-preset','ultrafast','-crf','26','-pix_fmt','yuv420p','-movflags','+faststart',out]
+      // Render Free / iPhone: caminho leve primeiro para reduzir memória e evitar queda do serviço.
+      ['-y','-hide_banner','-loglevel','error','-loop','1','-i',img,'-t',String(duration),'-vf','scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,setsar=1,fps=24,format=yuv420p','-an','-c:v','libx264','-preset','ultrafast','-crf','25','-pix_fmt','yuv420p','-movflags','+faststart',out],
+      ['-y','-hide_banner','-loglevel','error','-loop','1','-i',img,'-t',String(duration),'-vf','scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2:black,setsar=1,fps=20,format=yuv420p','-an','-c:v','libx264','-preset','ultrafast','-crf','26','-pix_fmt','yuv420p','-movflags','+faststart',out],
+      ['-y','-hide_banner','-loglevel','error','-loop','1','-i',img,'-t',String(duration),'-vf',`scale=800:1422:force_original_aspect_ratio=increase,crop=720:1280:(iw-720)/2:(ih-1280)/2,zoompan=z=min(zoom+0.0006\,1.06):x=iw/2-(iw/zoom/2):y=ih/2-(ih/zoom/2):d=${Math.max(1,Math.round(duration*24))}:s=720x1280:fps=24,format=yuv420p`,'-an','-c:v','libx264','-preset','ultrafast','-crf','25','-pix_fmt','yuv420p','-movflags','+faststart',out]
     ];
     let lastErr=null, used=0;
     for(let i=0;i<attempts.length;i++){
@@ -157,7 +158,7 @@ app.post('/tiktok/link-analyze',async(req,res)=>{
     if(!isTikTokUrl(original))return res.status(400).json({error:'Link do TikTok inválido'});
     const u=await resolveTikTokUrl(original);
     const endpoint='https://www.tiktok.com/oembed?url='+encodeURIComponent(u);
-    const rr=await fetch(endpoint,{headers:{'User-Agent':'Mozilla/5.0 ViralStudioCloud/8.2'}});
+    const rr=await fetch(endpoint,{headers:{'User-Agent':'Mozilla/5.0 ViralStudioCloud/8.3'}});
     if(!rr.ok)return res.status(502).json({error:'TikTok não retornou os dados públicos desse vídeo'});
     const ref=await rr.json();
     const product=String(req.body?.product||'').trim().slice(0,160);
@@ -477,5 +478,5 @@ app.get('/jobs/:id/file',(req,res)=>{
 
 cleanupStorage(true);
 setInterval(()=>{const cutoff=Date.now()-90*60*1000;for(const [id,j] of jobs){if((j.finishedAt||j.createdAt)<cutoff&&['ready','error'].includes(j.status)){jobs.delete(id);cleanFile(outPath(id))}}cleanupStorage(false)},10*60*1000).unref?.();
-const server=app.listen(Number(process.env.PORT)||10000,'0.0.0.0',()=>console.log(`Viral Studio Cloud Render V8.2 pronto na porta 10000 — Multiplicador de Criativos — fila até 100 — ${MAX_CONCURRENCY} renderizações paralelas`));
+const server=app.listen(Number(process.env.PORT)||10000,'0.0.0.0',()=>console.log(`Viral Studio Cloud Render V8.3 pronto na porta 10000 — Multiplicador de Criativos — fila até 100 — ${MAX_CONCURRENCY} renderizações paralelas`));
 server.requestTimeout=30*60*1000;server.headersTimeout=31*60*1000;server.keepAliveTimeout=65000;
