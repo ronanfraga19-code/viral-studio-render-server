@@ -531,10 +531,12 @@ async function linkDNA(url,product,facts){
   if(thumb){try{const ir=await fetch(thumb);if(ir.ok){const b=Buffer.from(await ir.arrayBuffer());imgs=['data:image/jpeg;base64,'+b.toString('base64')]}}catch(_){}}
   return visionDNA(imgs,product,facts,{title:ref.title||'',author_name:ref.author_name||''});
 }
-function realPrompt(dna,variant,duration,index){
+function realPrompt(dna,variant,duration,index,audioMode='ambient',visualCopy={}){
   const scenarios=['quarto moderno com luz natural','loja clean e elegante','área externa urbana durante o dia','closet minimalista','sala contemporânea bem iluminada'];
   const scene=safeText((dna.variants&&dna.variants[index%Math.max(1,dna.variants.length)])||variant||dna.scene||scenarios[index%scenarios.length],300);
-  return `Vertical 9:16 realistic UGC TikTok Shop video, ${Math.max(4,Math.min(10,Number(duration)||8))} seconds. Create a COMPLETELY NEW video from scratch. Adult Brazilian female influencer with a clearly different appearance from any reference person; do not imitate, recreate, face-match or clone any real person. Product: ${safeText(dna.product,180)}. Preserve only these observable product characteristics: ${safeText(dna.product_visual,420)}. Creative idea: ${safeText(dna.idea,260)}. Selling angle: ${safeText(dna.selling_angle,260)}. Action and movement: ${safeText(dna.movement,360)}. Scene variation: ${scene}. Dynamic natural body movement: walk, turn, use hands, show product close to camera, then full-body or wider view; camera tracks naturally with multiple framings. Do not make a static photo animation and do not use repetitive zoom in/zoom out as the main motion. No on-screen text, no captions, no subtitles, no watermarks, no TikTok UI, no usernames, no logos copied from the reference. Clean realistic lighting, believable hands and product interaction, mobile phone UGC look, high detail. Do not copy any original video frame.`;
+  const internal=`Hook visual: ${safeText(visualCopy?.hook||'',220)} Body visual: ${safeText(visualCopy?.body||'',320)} CTA visual: ${safeText(visualCopy?.cta||'',220)}`;
+  const audio=audioMode==='ambient'?'Natural environmental audio only: realistic footsteps synchronized with walking, subtle fabric movement, room or street ambience appropriate to the scene. No spoken dialogue, no music.':audioMode==='silent'?'No audio is required.':'No generated dialogue; narration will be added later by the app.';
+  return `Vertical 9:16 realistic UGC TikTok Shop video, ${Math.max(4,Math.min(10,Number(duration)||8))} seconds. Create a COMPLETELY NEW video from scratch. Adult Brazilian female influencer with a clearly different appearance from any reference person; do not imitate, recreate, face-match or clone any real person. Product: ${safeText(dna.product,180)}. Preserve only these observable product characteristics: ${safeText(dna.product_visual,420)}. Creative idea: ${safeText(dna.idea,260)}. Selling angle: ${safeText(dna.selling_angle,260)}. ${internal}. Action and movement: ${safeText(dna.movement,360)}. Scene variation: ${scene}. Dynamic human motion inspired only by the reference rhythm: enter walking, approach camera, step back, turn sideways, rotate body naturally, use hands to show the product or fabric, alternate full-body and medium close-up, end in a clean product-focused pose. Camera follows naturally like a real phone recording. Do not make a static photo animation. Do not use repetitive zoom in/zoom out as the main motion. No on-screen text, no captions, no subtitles, no watermarks, no TikTok UI, no usernames, no copied logos. Clean realistic lighting, believable hands, feet and product interaction, realistic fabric physics, mobile phone UGC look, high detail. ${audio} Do not copy any original video frame.`;
 }
 async function generateRealVideo(prompt,duration,dest){
   if(!REAL_AI_KEY_VALID)throw new Error('Chave da IA Real inválida. No Render, use a chave real completa em POLLINATIONS_API_KEY; não use sk_..., sk_… ou texto de exemplo.');
@@ -548,18 +550,43 @@ async function generateRealVideo(prompt,duration,dest){
     if(!ct.includes('video')&&!ct.includes('octet-stream'))throw new Error('Gerador IA não retornou MP4: '+ct);
     const b=Buffer.from(await r.arrayBuffer()); if(b.length<10000)throw new Error('Gerador IA retornou arquivo vazio/pequeno.');
     const raw=dest+'.raw.mp4'; fs.writeFileSync(raw,b);
-    await run(['-y','-hide_banner','-loglevel','error','-i',raw,'-vf','scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,setsar=1,fps=24,format=yuv420p','-an','-c:v','libx264','-preset','veryfast','-crf','23','-pix_fmt','yuv420p','-movflags','+faststart',dest]);
-    cleanFile(raw);
+    const nativeAudio=await hasAudio(raw);
+    const args=['-y','-hide_banner','-loglevel','error','-i',raw,'-map','0:v:0'];
+    if(nativeAudio)args.push('-map','0:a:0?');
+    args.push('-vf','scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,setsar=1,fps=24,format=yuv420p','-c:v','libx264','-preset','veryfast','-crf','23','-pix_fmt','yuv420p');
+    if(nativeAudio)args.push('-c:a','aac','-b:a','128k','-ar','44100','-ac','2');
+    args.push('-movflags','+faststart',dest);
+    await run(args); cleanFile(raw);
   }finally{clearTimeout(timer)}
 }
+
+async function stripAudio(video,out){
+  await run(['-y','-hide_banner','-loglevel','error','-i',video,'-map','0:v:0','-c:v','copy','-an','-movflags','+faststart',out]);
+}
+async function addAmbient(video,out,targetDuration){
+  const vd=Math.max(1,Number(targetDuration)||await probeDuration(video));
+  // Lightweight foley fallback for mobile: room tone + soft synchronized footstep thumps.
+  await run(['-y','-hide_banner','-loglevel','error','-i',video,
+    '-f','lavfi','-t',vd.toFixed(3),'-i','anoisesrc=color=pink:amplitude=0.012:sample_rate=44100',
+    '-f','lavfi','-t',vd.toFixed(3),'-i','sine=frequency=92:sample_rate=44100',
+    '-filter_complex',`[1:a]highpass=f=120,lowpass=f=5000,volume=0.38[room];[2:a]lowpass=f=180,volume='if(lt(mod(t,0.92),0.075),0.34,0)':eval=frame[step];[room][step]amix=inputs=2:duration=longest:normalize=0,alimiter=limit=0.72[a]`,
+    '-map','0:v:0','-map','[a]','-c:v','copy','-c:a','aac','-b:a','128k','-ar','44100','-ac','2','-t',vd.toFixed(3),'-movflags','+faststart',out]);
+}
+
 async function processAIJob(job){
   job.status='working';job.progress=12;job.startedAt=Date.now();
   const out=outPath(job.id), visual=path.join(TMP,'aireal-'+job.id+'.mp4'); cleanFile(out);cleanFile(visual);
   try{
     ensureStorage(700);job.progress=20;
     await generateRealVideo(job.prompt,job.duration,visual);job.progress=82;
-    if(job.narration){try{await addNarration(visual,out,job.narration,job.duration)}catch(e){fs.copyFileSync(visual,out);job.warning='Vídeo criado pela IA; a narração não pôde ser aplicada nesta tentativa.'}}
-    else fs.copyFileSync(visual,out);
+    if(job.audioMode==='silent'){
+      await stripAudio(visual,out);
+    }else if(job.audioMode==='vendedora' && job.narration){
+      try{await addNarration(visual,out,job.narration,job.duration)}catch(e){fs.copyFileSync(visual,out);job.warning='Vídeo criado; a voz não pôde ser aplicada nesta tentativa.'}
+    }else{
+      if(await hasAudio(visual)) fs.copyFileSync(visual,out);
+      else {try{await addAmbient(visual,out,job.duration)}catch(e){fs.copyFileSync(visual,out);job.warning='Vídeo criado sem áudio porque o som ambiente não pôde ser aplicado.'}}
+    }
     job.progress=96;await runOut('ffprobe',['-v','error','-show_entries','format=duration','-of','default=noprint_wrappers=1:nokey=1',out]);
     job.status='ready';job.progress=100;job.size=fs.statSync(out).size;job.finishedAt=Date.now();
   }catch(e){job.status='error';job.error=safeText(e.message||e,900);job.progress=Math.max(1,Math.min(99,job.progress||1));job.finishedAt=Date.now();}
@@ -568,7 +595,7 @@ async function processAIJob(job){
 function aiPump(){while(aiActive<1&&aiQueue.length){const id=aiQueue.shift(),j=aiJobs.get(id);if(!j||j.status!=='queued')continue;aiActive++;processAIJob(j).finally(()=>{aiActive--;aiPump()})}}
 app.get('/ai-real/status',(_q,res)=>{
   const message=REAL_AI_KEY_VALID?'IA Real pronta':REAL_AI_KEY_TYPE==='publishable'?'A chave configurada é pk_. Para o backend do Render, use uma chave secreta sk_ da Pollinations.':REAL_AI_KEY_TYPE==='missing'?'POLLINATIONS_API_KEY não foi definida no Render.':'POLLINATIONS_API_KEY inválida ou incompleta.';
-  res.json({ok:true,version:'9.5',mode:'upload-reference-only',configured:REAL_AI_KEY_VALID,keyPresent:Boolean(REAL_AI_KEY),keyType:REAL_AI_KEY_TYPE,message,videoModel:REAL_AI_VIDEO_MODEL,visionModel:REAL_AI_VISION_MODEL,originalFramesReused:false,audio:'new-tts',mobileReferenceFrames:true,downloadRoute:'/ai-real/jobs/:id/file?download=1'});
+  res.json({ok:true,version:'10.0',mode:'mobile-upload-ai-real',configured:REAL_AI_KEY_VALID,keyPresent:Boolean(REAL_AI_KEY),keyType:REAL_AI_KEY_TYPE,message,videoModel:REAL_AI_VIDEO_MODEL,visionModel:REAL_AI_VISION_MODEL,originalFramesReused:false,audio:'ambient-default',audioModes:['ambient','silent','vendedora'],mobileReferenceFrames:true,downloadRoute:'/ai-real/jobs/:id/file?download=1'});
 });
 app.post('/ai-real/analyze',async(req,res)=>{
  try{
@@ -593,7 +620,7 @@ app.post('/ai-real/analyze-images',async(req,res)=>{
   res.json({ok:true,dna,warning:dna.vision_warning||null,originalFramesReused:false,referenceFramesUsed:images.length});
  }catch(e){const dna=defaultDNA(req.body?.product||'',req.body?.facts||'',{});dna.vision_warning='Fallback automático ativado.';res.json({ok:true,dna,warning:safeText(e.message||e,300),originalFramesReused:false,referenceFramesUsed:0})}
 });
-app.post('/ai-real/jobs',(req,res)=>{if(!REAL_AI_KEY_VALID)return res.status(503).json({error:'IA Real não configurada. Confira POLLINATIONS_API_KEY no Render.'});const dna=req.body?.dna||{};const idx=Math.max(0,Number(req.body?.index)||0),duration=Math.max(4,Math.min(10,Number(req.body?.duration)||8));const id=crypto.randomUUID();const job={id,status:'queued',progress:0,createdAt:Date.now(),duration,narration:safeText(req.body?.narration||'',900),voice:safeText(req.body?.voice||'natural',40),prompt:realPrompt(dna,req.body?.variant, duration,idx),warning:null,error:null};aiJobs.set(id,job);aiQueue.push(id);aiPump();res.status(202).json({ok:true,id,status:'queued'});});
+app.post('/ai-real/jobs',(req,res)=>{if(!REAL_AI_KEY_VALID)return res.status(503).json({error:'Geração temporariamente indisponível.'});const dna=req.body?.dna||{};const idx=Math.max(0,Number(req.body?.index)||0),duration=Math.max(4,Math.min(10,Number(req.body?.duration)||8));const audioMode=['ambient','silent','vendedora'].includes(String(req.body?.audioMode||''))?String(req.body.audioMode):'ambient';const visualCopy=req.body?.visualCopy||{};const id=crypto.randomUUID();const job={id,status:'queued',progress:0,createdAt:Date.now(),duration,audioMode,narration:safeText(req.body?.narration||'',900),voice:safeText(req.body?.voice||'vendedora',40),prompt:realPrompt(dna,req.body?.variant,duration,idx,audioMode,visualCopy),warning:null,error:null};aiJobs.set(id,job);aiQueue.push(id);aiPump();res.status(202).json({ok:true,id,status:'queued',audioMode});});
 app.get('/ai-real/jobs/:id',(req,res)=>{const j=aiJobs.get(String(req.params.id));if(!j)return res.status(404).json({error:'Job IA não encontrado'});res.json({ok:true,id:j.id,status:j.status,progress:j.progress,error:j.error||null,warning:j.warning||null,size:j.size||0})});
 app.get('/ai-real/jobs/:id/file',(req,res)=>{
   const j=aiJobs.get(String(req.params.id)),p=outPath(String(req.params.id));
