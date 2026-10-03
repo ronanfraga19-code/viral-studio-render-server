@@ -473,7 +473,7 @@ app.post('/ai/analyze',async(req,res)=>{
 const REAL_AI_KEY_RAW=String(process.env.POLLINATIONS_API_KEY||'').trim();
 const REAL_AI_KEY=REAL_AI_KEY_RAW.replace(/[\u2026\u2018\u2019\u201C\u201D]/g,'').replace(/\s+/g,'');
 const REAL_AI_KEY_TYPE=REAL_AI_KEY.startsWith('sk_')?'secret':REAL_AI_KEY.startsWith('pk_')?'publishable':REAL_AI_KEY?'unknown':'missing';
-const REAL_AI_KEY_VALID=REAL_AI_KEY_TYPE==='secret' && /^sk_[\x21-\x7e]{8,}$/.test(REAL_AI_KEY) && !/\.{3,}/.test(REAL_AI_KEY_RAW) && !REAL_AI_KEY_RAW.includes('…');
+const REAL_AI_KEY_VALID=REAL_AI_KEY_TYPE==='secret' && REAL_AI_KEY.length>=12 && !/\.{3,}/.test(REAL_AI_KEY_RAW) && !REAL_AI_KEY_RAW.includes('…');
 const REAL_AI_VIDEO_MODEL=String(process.env.POLLINATIONS_VIDEO_MODEL||'minimax/minimax-h3-max-turbo').trim();
 const REAL_AI_VISION_MODEL=String(process.env.POLLINATIONS_VISION_MODEL||'google/gemini-2.5-flash-lite').trim();
 const aiJobs=new Map(), aiQueue=[]; let aiActive=0;
@@ -595,7 +595,7 @@ async function processAIJob(job){
 function aiPump(){while(aiActive<1&&aiQueue.length){const id=aiQueue.shift(),j=aiJobs.get(id);if(!j||j.status!=='queued')continue;aiActive++;processAIJob(j).finally(()=>{aiActive--;aiPump()})}}
 app.get('/ai-real/status',(_q,res)=>{
   const message=REAL_AI_KEY_VALID?'IA Real pronta':REAL_AI_KEY_TYPE==='publishable'?'A chave configurada é pk_. Para o backend do Render, use uma chave secreta sk_ da Pollinations.':REAL_AI_KEY_TYPE==='missing'?'POLLINATIONS_API_KEY não foi definida no Render.':'POLLINATIONS_API_KEY inválida ou incompleta.';
-  res.json({ok:true,version:'10.0',mode:'mobile-upload-ai-real',configured:REAL_AI_KEY_VALID,keyPresent:Boolean(REAL_AI_KEY),keyType:REAL_AI_KEY_TYPE,message,videoModel:REAL_AI_VIDEO_MODEL,visionModel:REAL_AI_VISION_MODEL,originalFramesReused:false,audio:'ambient-default',audioModes:['ambient','silent','vendedora'],mobileReferenceFrames:true,downloadRoute:'/ai-real/jobs/:id/file?download=1'});
+  res.json({ok:true,version:'10.1',mode:'mobile-upload-ai-real',configured:REAL_AI_KEY_VALID,keyPresent:Boolean(REAL_AI_KEY),keyType:REAL_AI_KEY_TYPE,message,videoModel:REAL_AI_VIDEO_MODEL,visionModel:REAL_AI_VISION_MODEL,originalFramesReused:false,audio:'ambient-default',audioModes:['ambient','silent','vendedora'],mobileReferenceFrames:true,downloadRoute:'/ai-real/jobs/:id/file?download=1'});
 });
 app.post('/ai-real/analyze',async(req,res)=>{
  try{
