@@ -480,6 +480,24 @@ const aiJobs=new Map(), aiQueue=[]; let aiActive=0;
 
 function stripJsonFence(v){return String(v||'').replace(/^```(?:json)?\s*/i,'').replace(/```\s*$/,'').trim()}
 function safeText(v,n=1000){return String(v||'').replace(/[\u0000-\u001f]+/g,' ').replace(/\s+/g,' ').trim().slice(0,n)}
+
+function providerError(code, detail=''){
+  const e=new Error('Geração temporariamente indisponível. Tente novamente mais tarde.');
+  e.code=code||'PROVIDER_UNAVAILABLE';
+  e.privateDetail=safeText(detail,1200);
+  return e;
+}
+function isBalanceError(status, body=''){
+  const t=String(body||'').toUpperCase();
+  return Number(status)===402 || t.includes('INSUFFICIENT_BALANCE') || t.includes('INSUFFICIENT BALANCE');
+}
+function failQueuedAIJobs(publicMessage='Geração temporariamente indisponível. Tente novamente mais tarde.'){
+  while(aiQueue.length){
+    const id=aiQueue.shift(), j=aiJobs.get(id);
+    if(!j || j.status!=='queued') continue;
+    j.status='error'; j.progress=0; j.error=publicMessage; j.errorCode='GENERATION_UNAVAILABLE'; j.finishedAt=Date.now();
+  }
+}
 function defaultDNA(product,facts,meta={}){
   const title=safeText(meta.title||'',220);
   const p=safeText(product||title||'produto mostrado na referência',160);
@@ -573,7 +591,19 @@ async function generateRealVideo(prompt,duration,dest){
   const c=new AbortController(), timer=setTimeout(()=>c.abort(),12*60*1000);
   try{
     const r=await fetch(url,{headers:{'Authorization':'Bearer '+REAL_AI_KEY,'Accept':'video/mp4,application/octet-stream'},redirect:'follow',signal:c.signal});
-    if(!r.ok)throw new Error('Gerador IA respondeu HTTP '+r.status+': '+safeText(await r.text(),500));
+    if(!r.ok){
+      const body=await r.text().catch(()=> '');
+      if(isBalanceError(r.status,body)){
+        console.warn('[IA REAL] Saldo insuficiente no provedor. HTTP',r.status,safeText(body,500));
+        throw providerError('PROVIDER_BALANCE',body);
+      }
+      if(r.status===401 || r.status===403){
+        console.warn('[IA REAL] Autenticação recusada pelo provedor. HTTP',r.status,safeText(body,500));
+        throw providerError('PROVIDER_AUTH',body);
+      }
+      console.warn('[IA REAL] Provedor indisponível. HTTP',r.status,safeText(body,500));
+      throw providerError('PROVIDER_UNAVAILABLE',body);
+    }
     const ct=String(r.headers.get('content-type')||'');
     if(!ct.includes('video')&&!ct.includes('octet-stream'))throw new Error('Gerador IA não retornou MP4: '+ct);
     const b=Buffer.from(await r.arrayBuffer()); if(b.length<10000)throw new Error('Gerador IA retornou arquivo vazio/pequeno.');
@@ -617,7 +647,14 @@ async function processAIJob(job){
     }
     job.progress=96;await runOut('ffprobe',['-v','error','-show_entries','format=duration','-of','default=noprint_wrappers=1:nokey=1',out]);
     job.status='ready';job.progress=100;job.size=fs.statSync(out).size;job.finishedAt=Date.now();
-  }catch(e){job.status='error';job.error=safeText(e.message||e,900);job.progress=Math.max(1,Math.min(99,job.progress||1));job.finishedAt=Date.now();}
+  }catch(e){
+    job.status='error';
+    job.error='Geração temporariamente indisponível. Tente novamente mais tarde.';
+    job.errorCode='GENERATION_UNAVAILABLE';
+    job.progress=Math.max(1,Math.min(99,job.progress||1));job.finishedAt=Date.now();
+    console.warn('[IA REAL][JOB '+job.id+']',e?.code||'ERROR',safeText(e?.privateDetail||e?.message||e,900));
+    if(e?.code==='PROVIDER_BALANCE' || e?.code==='PROVIDER_AUTH') failQueuedAIJobs();
+  }
   finally{cleanFile(visual)}
 }
 function aiPump(){while(aiActive<1&&aiQueue.length){const id=aiQueue.shift(),j=aiJobs.get(id);if(!j||j.status!=='queued')continue;aiActive++;processAIJob(j).finally(()=>{aiActive--;aiPump()})}}
@@ -625,7 +662,7 @@ app.get('/ai-real/status',async(_q,res)=>{
   const provider=REAL_AI_KEY_VALID?await pollinationsKeyCheck():{ok:false,status:0,reason:'not_configured'};
   const configured=REAL_AI_KEY_VALID&&provider.ok;
   const message=configured?'IA Real pronta e chave aceita pelo provedor':provider.status===401?'A Pollinations rejeitou a chave configurada no Render':REAL_AI_KEY_TYPE==='publishable'?'A chave configurada é pk_. Use uma chave secreta sk_ no backend.':REAL_AI_KEY_TYPE==='missing'?'POLLINATIONS_API_KEY não foi definida no Render.':'Não consegui validar a chave agora.';
-  res.json({ok:true,version:'10.4',mode:'mobile-upload-ai-real',configured,keyPresent:Boolean(REAL_AI_KEY),keyType:REAL_AI_KEY_TYPE,providerAuth:{ok:provider.ok,status:provider.status,reason:provider.reason},message,videoModel:REAL_AI_VIDEO_MODEL,visionModel:REAL_AI_VISION_MODEL,originalFramesReused:false,audio:'ambient-default',audioModes:['ambient','silent','vendedora'],mobileReferenceFrames:true,downloadRoute:'/ai-real/jobs/:id/file?download=1'});
+  res.json({ok:true,version:'10.5',mode:'mobile-upload-ai-real',configured,keyPresent:Boolean(REAL_AI_KEY),keyType:REAL_AI_KEY_TYPE,providerAuth:{ok:provider.ok,status:provider.status,reason:provider.reason},message,videoModel:REAL_AI_VIDEO_MODEL,visionModel:REAL_AI_VISION_MODEL,originalFramesReused:false,audio:'ambient-default',audioModes:['ambient','silent','vendedora'],mobileReferenceFrames:true,downloadRoute:'/ai-real/jobs/:id/file?download=1'});
 });
 app.post('/ai-real/analyze',async(req,res)=>{
  try{
@@ -651,7 +688,7 @@ app.post('/ai-real/analyze-images',async(req,res)=>{
  }catch(e){const dna=defaultDNA(req.body?.product||'',req.body?.facts||'',{});dna.vision_warning='Fallback automático ativado.';res.json({ok:true,dna,warning:safeText(e.message||e,300),originalFramesReused:false,referenceFramesUsed:0})}
 });
 app.post('/ai-real/jobs',(req,res)=>{if(!REAL_AI_KEY_VALID)return res.status(503).json({error:'Geração temporariamente indisponível.'});const dna=req.body?.dna||{};const idx=Math.max(0,Number(req.body?.index)||0),duration=Math.max(4,Math.min(10,Number(req.body?.duration)||8));const audioMode=['ambient','silent','vendedora'].includes(String(req.body?.audioMode||''))?String(req.body.audioMode):'ambient';const visualCopy=req.body?.visualCopy||{};const id=crypto.randomUUID();const job={id,status:'queued',progress:0,createdAt:Date.now(),duration,audioMode,narration:safeText(req.body?.narration||'',900),voice:safeText(req.body?.voice||'vendedora',40),prompt:realPrompt(dna,req.body?.variant,duration,idx,audioMode,visualCopy),warning:null,error:null};aiJobs.set(id,job);aiQueue.push(id);aiPump();res.status(202).json({ok:true,id,status:'queued',audioMode});});
-app.get('/ai-real/jobs/:id',(req,res)=>{const j=aiJobs.get(String(req.params.id));if(!j)return res.status(404).json({error:'Job IA não encontrado'});res.json({ok:true,id:j.id,status:j.status,progress:j.progress,error:j.error||null,warning:j.warning||null,size:j.size||0})});
+app.get('/ai-real/jobs/:id',(req,res)=>{const j=aiJobs.get(String(req.params.id));if(!j)return res.status(404).json({error:'Job IA não encontrado'});res.json({ok:true,id:j.id,status:j.status,progress:j.progress,error:j.error||null,errorCode:j.errorCode||null,warning:j.warning||null,size:j.size||0})});
 app.get('/ai-real/jobs/:id/file',(req,res)=>{
   const j=aiJobs.get(String(req.params.id)),p=outPath(String(req.params.id));
   if(!j||j.status!=='ready'||!fs.existsSync(p))return res.status(404).json({error:'Vídeo IA ainda não está pronto'});
