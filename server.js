@@ -4,7 +4,7 @@ const fs=require('fs'),os=require('os'),path=require('path'),crypto=require('cry
 
 const app=express();app.disable('x-powered-by');
 app.use(cors({origin:true,methods:['GET','POST','OPTIONS'],allowedHeaders:['Content-Type','Accept'],exposedHeaders:['Content-Disposition','Content-Length'],maxAge:86400}));
-app.options('*',cors());app.use(express.json({limit:'2mb'}));
+app.options('*',cors());app.use(express.json({limit:'6mb'}));
 
 const ROOT=path.join(__dirname,'vs-data'),RAW=path.join(ROOT,'assets','raw'),NORM=path.join(ROOT,'assets','norm'),OUT=path.join(ROOT,'jobs'),TMP=path.join(ROOT,'tmp');
 for(const d of [RAW,NORM,OUT,TMP])fs.mkdirSync(d,{recursive:true});
@@ -66,8 +66,8 @@ function runOut(bin,args,timeoutMs=120000){return new Promise((ok,no)=>{const p=
 function runInput(bin,args,input){return new Promise((ok,no)=>{const p=spawn(bin,args,{stdio:['pipe','pipe','pipe'],windowsHide:true});let out='',err='';p.stdout.on('data',d=>out+=d);p.stderr.on('data',d=>err+=d);p.on('error',no);p.on('close',c=>c===0?ok(out.trim()):no(new Error(err||out||bin+' '+c)));p.stdin.end(input)})}
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
 
-app.get('/',(_q,r)=>r.json({ok:true,service:'Viral Studio Motor Cloud',version:'9.2',maxBatch:20,concurrency:MAX_CONCURRENCY,mode:'cloud-render'}));
-app.get('/health',(_q,r)=>r.json({ok:true,service:'Viral Studio Motor Cloud',engine:'cloud',version:'9.2',mode:'cloud-render',maxBatch:20,concurrency:MAX_CONCURRENCY,active,queued:queue.length,storage:storageSummary(),capabilities:{linkMp4:true,linkInfo:true,linkAnalyze:true,batchZip:false,autoCleanup:true,mobile720p:true,uploadMp4:true,aiReal:true,newVideoFromReference:true,originalFramesReused:false}}));
+app.get('/',(_q,r)=>r.json({ok:true,service:'Viral Studio Motor Cloud',version:'9.3',maxBatch:20,concurrency:MAX_CONCURRENCY,mode:'cloud-render'}));
+app.get('/health',(_q,r)=>r.json({ok:true,service:'Viral Studio Motor Cloud',engine:'cloud',version:'9.3',mode:'cloud-render',maxBatch:20,concurrency:MAX_CONCURRENCY,active,queued:queue.length,storage:storageSummary(),capabilities:{linkMp4:true,linkInfo:true,linkAnalyze:true,batchZip:false,autoCleanup:true,mobile720p:true,uploadMp4:true,aiReal:true,newVideoFromReference:true,originalFramesReused:false}}));
 app.get('/storage',(_q,r)=>r.json({ok:true,...storageSummary()}));
 app.post('/storage/cleanup',(_q,r)=>{const freed=
 app.get('/queue/state',(_req,res)=>res.json({ok:true,active,queued:queue.length,items:queue.slice(0,20)}));
@@ -565,7 +565,7 @@ async function processAIJob(job){
   finally{cleanFile(visual)}
 }
 function aiPump(){while(aiActive<1&&aiQueue.length){const id=aiQueue.shift(),j=aiJobs.get(id);if(!j||j.status!=='queued')continue;aiActive++;processAIJob(j).finally(()=>{aiActive--;aiPump()})}}
-app.get('/ai-real/status',(_q,res)=>res.json({ok:true,version:'9.2',mode:'new-video-from-reference',configured:REAL_AI_KEY_VALID,videoModel:REAL_AI_VIDEO_MODEL,visionModel:REAL_AI_VISION_MODEL,originalFramesReused:false,audio:'new-tts'}));
+app.get('/ai-real/status',(_q,res)=>res.json({ok:true,version:'9.3',mode:'new-video-from-reference',configured:REAL_AI_KEY_VALID,videoModel:REAL_AI_VIDEO_MODEL,visionModel:REAL_AI_VISION_MODEL,originalFramesReused:false,audio:'new-tts',mobileReferenceFrames:true}));
 app.post('/ai-real/analyze',async(req,res)=>{
  try{
   const product=safeText(req.body?.product||'',160),facts=safeText(req.body?.facts||'',600);let dna;
@@ -578,6 +578,16 @@ app.post('/ai-real/analyze',async(req,res)=>{
   }else return res.status(400).json({error:'Envie asset ou url'});
   res.json({ok:true,dna,warning:dna.vision_warning||null,originalFramesReused:false});
  }catch(e){const dna=defaultDNA(req.body?.product||'',req.body?.facts||'',{});dna.vision_warning='Fallback automático ativado.';res.json({ok:true,dna,warning:safeText(e.message||e,300),originalFramesReused:false})}
+});
+app.post('/ai-real/analyze-images',async(req,res)=>{
+ try{
+  const product=safeText(req.body?.product||'',160),facts=safeText(req.body?.facts||'',600);
+  const images=Array.isArray(req.body?.images)?req.body.images.slice(0,3).filter(x=>typeof x==='string'&&/^data:image\/(jpeg|jpg|png|webp);base64,/i.test(x)&&x.length<1800000):[];
+  let dna;
+  if(images.length){try{dna=await visionDNA(images,product,facts,{source:'mobile-frames'})}catch(e){dna=defaultDNA(product,facts,{});dna.vision_warning='Análise dos quadros falhou; usando DNA automático: '+safeText(e.message||e,220)}}
+  else{dna=defaultDNA(product,facts,{});dna.vision_warning='Nenhum quadro válido recebido; usando DNA automático.'}
+  res.json({ok:true,dna,warning:dna.vision_warning||null,originalFramesReused:false,referenceFramesUsed:images.length});
+ }catch(e){const dna=defaultDNA(req.body?.product||'',req.body?.facts||'',{});dna.vision_warning='Fallback automático ativado.';res.json({ok:true,dna,warning:safeText(e.message||e,300),originalFramesReused:false,referenceFramesUsed:0})}
 });
 app.post('/ai-real/jobs',(req,res)=>{const dna=req.body?.dna||{};const idx=Math.max(0,Number(req.body?.index)||0),duration=Math.max(4,Math.min(10,Number(req.body?.duration)||8));const id=crypto.randomUUID();const job={id,status:'queued',progress:0,createdAt:Date.now(),duration,narration:safeText(req.body?.narration||'',900),prompt:realPrompt(dna,req.body?.variant, duration,idx),warning:null,error:null};aiJobs.set(id,job);aiQueue.push(id);aiPump();res.status(202).json({ok:true,id,status:'queued'});});
 app.get('/ai-real/jobs/:id',(req,res)=>{const j=aiJobs.get(String(req.params.id));if(!j)return res.status(404).json({error:'Job IA não encontrado'});res.json({ok:true,id:j.id,status:j.status,progress:j.progress,error:j.error||null,warning:j.warning||null,size:j.size||0})});
