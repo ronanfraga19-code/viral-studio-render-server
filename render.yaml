@@ -2,5 +2,13 @@ services:
   - type: web
     name: viral-studio-motor-cloud
     runtime: docker
-    plan: free
+    plan: starter
     healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MAX_CONCURRENCY
+        value: "1"
+      - key: MAX_BATCH
+        value: "10"

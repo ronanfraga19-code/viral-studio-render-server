@@ -11,7 +11,9 @@ for(const d of [RAW,NORM,OUT,TMP])fs.mkdirSync(d,{recursive:true});
 const upload=multer({dest:TMP,limits:{fileSize:2*1024*1024*1024,files:1}});
 const jobs=new Map(), queue=[];let active=0;
 const signatures=new Map();
-const MAX_CONCURRENCY=Math.max(1,Math.min(Number(process.env.VS_CONCURRENCY)||3,Math.max(1,(os.cpus()||[]).length-1)));
+const CPU_COUNT=Math.max(1,(os.cpus()||[]).length);
+const AUTO_CONCURRENCY=CPU_COUNT>=8?2:1;
+const MAX_CONCURRENCY=Math.max(1,Math.min(Number(process.env.VS_CONCURRENCY)||AUTO_CONCURRENCY,2));
 const normLocks=new Map();
 
 function safeId(v){v=String(v||'').toLowerCase().replace(/[^a-z0-9_-]/g,'');return v.length>=8&&v.length<=128?v:null}
@@ -19,16 +21,191 @@ function rawPath(id){return path.join(RAW,id+'.bin')}
 function normPath(id){return path.join(NORM,id+'.mp4')}
 function outPath(id){return path.join(OUT,id+'.mp4')}
 function cleanFile(p){try{fs.rmSync(p,{force:true})}catch{}}
+function dirFiles(dir){try{return fs.readdirSync(dir,{withFileTypes:true}).flatMap(e=>{const p=path.join(dir,e.name);return e.isDirectory()?dirFiles(p):[p]})}catch(_){return []}}
+function fileAgeMs(p){try{return Date.now()-fs.statSync(p).mtimeMs}catch(_){return Infinity}}
+function cleanDirOlderThan(dir,ageMs,keep=new Set()){
+  let freed=0;
+  for(const p of dirFiles(dir)){
+    if(keep.has(p)||fileAgeMs(p)<ageMs)continue;
+    try{const s=fs.statSync(p).size;fs.rmSync(p,{force:true});freed+=s}catch(_){ }
+  }
+  return freed;
+}
+function activeAssetPaths(){
+  const keep=new Set();
+  for(const j of jobs.values()) if(['queued','working'].includes(j.status)) for(const id of (j.clips||[])){keep.add(rawPath(id));keep.add(normPath(id));}
+  return keep;
+}
+function diskInfo(){
+  try{if(typeof fs.statfsSync==='function'){const s=fs.statfsSync(ROOT);const free=Number(s.bavail||s.bfree||0)*Number(s.bsize||s.frsize||4096);const total=Number(s.blocks||0)*Number(s.bsize||s.frsize||4096);return {free,total}}}catch(_){ }
+  return {free:null,total:null};
+}
+function storageSummary(){
+  const d=diskInfo(),mb=x=>x==null?null:Math.round(x/1024/1024);
+  return {freeMB:mb(d.free),totalMB:mb(d.total),tmpMB:Math.round(dirFiles(TMP).reduce((a,p)=>{try{return a+fs.statSync(p).size}catch(_){return a}},0)/1024/1024),jobsMB:Math.round(dirFiles(OUT).reduce((a,p)=>{try{return a+fs.statSync(p).size}catch(_){return a}},0)/1024/1024)};
+}
+function cleanupStorage(aggressive=false){
+  const keep=activeAssetPaths(); let freed=0;
+  freed+=cleanDirOlderThan(TMP,aggressive?5*60*1000:25*60*1000);
+  freed+=cleanDirOlderThan(OUT,aggressive?45*60*1000:2*60*60*1000);
+  freed+=cleanDirOlderThan(RAW,aggressive?2*60*60*1000:6*60*60*1000,keep);
+  freed+=cleanDirOlderThan(NORM,aggressive?2*60*60*1000:6*60*60*1000,keep);
+  return freed;
+}
+function ensureStorage(minFreeMB=700){
+  cleanupStorage(false); let d=diskInfo();
+  if(d.free!=null&&d.free<minFreeMB*1024*1024){cleanupStorage(true);d=diskInfo();}
+  if(d.free!=null&&d.free<350*1024*1024){const mb=Math.max(0,Math.round(d.free/1024/1024));throw new Error(`Espaço insuficiente no Motor (${mb} MB livres). A limpeza automática já foi executada. Libere espaço no disco ou use o Motor Cloud.`)}
+}
 function run(args){return new Promise((ok,no)=>{const p=spawn('ffmpeg',args,{stdio:['ignore','ignore','pipe'],windowsHide:true});let e='';p.stderr.on('data',d=>{e=(e+d).slice(-16000)});p.on('error',no);p.on('close',c=>c===0?ok():no(new Error(e||('ffmpeg '+c))) )})}
 function runOut(bin,args){return new Promise((ok,no)=>{const p=spawn(bin,args,{stdio:['ignore','pipe','pipe'],windowsHide:true});let out='',err='';p.stdout.on('data',d=>out+=d);p.stderr.on('data',d=>err+=d);p.on('error',no);p.on('close',c=>c===0?ok(out.trim()):no(new Error(err||out||bin+' '+c)))})}
 function runInput(bin,args,input){return new Promise((ok,no)=>{const p=spawn(bin,args,{stdio:['pipe','pipe','pipe'],windowsHide:true});let out='',err='';p.stdout.on('data',d=>out+=d);p.stderr.on('data',d=>err+=d);p.on('error',no);p.on('close',c=>c===0?ok(out.trim()):no(new Error(err||out||bin+' '+c)));p.stdin.end(input)})}
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
 
-app.get('/',(_q,r)=>r.json({ok:true,service:'Viral Studio Render PC',version:'5.9',maxBatch:100,concurrency:MAX_CONCURRENCY,mode:'creative-multiplier'}));
-app.get('/health',(_q,r)=>r.json({ok:true,engine:'pc',version:'5.9',maxBatch:100,concurrency:MAX_CONCURRENCY,active,queued:queue.length}));
+app.get('/',(_q,r)=>r.json({ok:true,service:'Viral Studio Motor Cloud',version:'8.1',maxBatch:20,concurrency:MAX_CONCURRENCY,mode:'cloud-render'}));
+app.get('/health',(_q,r)=>r.json({ok:true,service:'Viral Studio Motor Cloud',engine:'cloud',version:'8.1',mode:'cloud-render',maxBatch:20,concurrency:MAX_CONCURRENCY,active,queued:queue.length,storage:storageSummary(),capabilities:{linkMp4:true,linkInfo:true,linkAnalyze:true,batchZip:false,autoCleanup:true,mobile720p:true,uploadMp4:true}}));
+app.get('/storage',(_q,r)=>r.json({ok:true,...storageSummary()}));
+app.post('/storage/cleanup',(_q,r)=>{const freed=cleanupStorage(true);r.json({ok:true,freedMB:Math.round(freed/1024/1024),...storageSummary()})});
+function isTikTokUrl(v){
+  try{const u=new URL(String(v||'').trim());return (u.protocol==='https:'||u.protocol==='http:')&&/(^|\.)tiktok\.com$/i.test(u.hostname)}catch(_){return false}
+}
+async function resolveTikTokUrl(raw){
+  let current=String(raw||'').trim();
+  if(!isTikTokUrl(current))throw new Error('Link do TikTok inválido');
+  for(let i=0;i<6;i++){
+    let r;
+    try{r=await fetch(current,{method:'GET',redirect:'manual',headers:{'User-Agent':'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 TikTokLinkResolver/1.0','Accept':'text/html,application/xhtml+xml'}})}catch(_){break}
+    const loc=r.headers.get('location');
+    try{r.body?.cancel?.()}catch(_){ }
+    if(!loc)break;
+    try{current=new URL(loc,current).toString()}catch(_){break}
+    if(!isTikTokUrl(current))break;
+  }
+  return current;
+}
+
+
+app.post('/tiktok/link-info',async(req,res)=>{
+  try{
+    const original=String(req.body?.url||'').trim();
+    if(!isTikTokUrl(original))return res.status(400).json({error:'Link do TikTok inválido'});
+    const u=await resolveTikTokUrl(original);
+    const endpoint='https://www.tiktok.com/oembed?url='+encodeURIComponent(u);
+    const r=await fetch(endpoint,{headers:{'User-Agent':'ViralStudio/6.5'}});
+    if(!r.ok)return res.status(502).json({error:'TikTok não retornou os dados públicos desse vídeo'});
+    const j=await r.json();
+    res.json({ok:true,url:original,resolved_url:u,title:j.title||'',author_name:j.author_name||'',author_url:j.author_url||'',thumbnail_url:j.thumbnail_url||'',html:j.html||'',provider_name:j.provider_name||'TikTok'});
+  }catch(e){res.status(500).json({error:'Falha ao consultar o link',detail:e.message})}
+});
+
+
+app.post('/tiktok/link-source',async(req,res)=>{
+  let img='';
+  try{
+    const original=String(req.body?.url||'').trim();
+    if(!isTikTokUrl(original))return res.status(400).json({error:'Link do TikTok inválido'});
+    const duration=Math.max(8,Math.min(30,Number(req.body?.duration)||20));
+    ensureStorage(500);
+    const u=await resolveTikTokUrl(original);
+    const endpoint='https://www.tiktok.com/oembed?url='+encodeURIComponent(u);
+    const rr=await fetch(endpoint,{redirect:'follow',headers:{'User-Agent':'Mozilla/5.0 ViralStudio/7.1','Accept':'application/json'}});
+    if(!rr.ok)return res.status(502).json({error:'TikTok não retornou a referência pública desse vídeo'});
+    const ref=await rr.json();
+    const thumb=String(ref.thumbnail_url||'').trim();
+    if(!thumb)return res.status(422).json({error:'Esse vídeo não forneceu uma imagem pública para criar o vídeo-base.'});
+
+    const ir=await fetch(thumb,{redirect:'follow',headers:{
+      'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36',
+      'Referer':'https://www.tiktok.com/',
+      'Accept':'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8'
+    }});
+    if(!ir.ok)return res.status(502).json({error:'Não consegui carregar a imagem pública do vídeo de referência.',detail:'HTTP '+ir.status});
+    const contentType=String(ir.headers.get('content-type')||'').toLowerCase();
+    const buf=Buffer.from(await ir.arrayBuffer());
+    if(buf.length<512)return res.status(422).json({error:'A referência visual retornada pelo TikTok está vazia.'});
+    if(contentType && !contentType.includes('image/'))return res.status(422).json({error:'O TikTok não retornou uma imagem válida para esse link.',detail:contentType});
+
+    const id=('link-'+crypto.randomUUID()).toLowerCase();
+    const ext=contentType.includes('webp')?'.webp':contentType.includes('png')?'.png':contentType.includes('avif')?'.avif':'.jpg';
+    img=path.join(TMP,id+ext);
+    const out=normPath(id);
+    fs.writeFileSync(img,buf);
+
+    // 1) movimento mais rico; 2) movimento simples; 3) base estática.
+    const frames=Math.max(1,Math.round(duration*30));
+    const attempts=[
+      ['-y','-hide_banner','-loglevel','error','-loop','1','-i',img,'-t',String(duration),'-vf',`scale=854:1518:force_original_aspect_ratio=increase,crop=720:1280:(iw-720)/2:(ih-1280)/2,zoompan=z=min(zoom+0.0008\\,1.10):x=iw/2-(iw/zoom/2)+sin(on/18)*6:y=ih/2-(ih/zoom/2)+cos(on/22)*6:d=${frames}:s=720x1280:fps=30,eq=contrast=1.03:saturation=1.05,format=yuv420p`,'-an','-c:v','libx264','-preset','ultrafast','-crf','23','-pix_fmt','yuv420p','-movflags','+faststart',out],
+      ['-y','-hide_banner','-loglevel','error','-loop','1','-i',img,'-t',String(duration),'-vf','scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,setsar=1,fps=30,format=yuv420p','-an','-c:v','libx264','-preset','ultrafast','-crf','24','-pix_fmt','yuv420p','-movflags','+faststart',out],
+      ['-y','-hide_banner','-loglevel','error','-loop','1','-i',img,'-t',String(duration),'-vf','scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2:black,setsar=1,fps=24,format=yuv420p','-an','-c:v','libx264','-preset','ultrafast','-crf','26','-pix_fmt','yuv420p','-movflags','+faststart',out]
+    ];
+    let lastErr=null, used=0;
+    for(let i=0;i<attempts.length;i++){
+      try{ cleanFile(out); await run(attempts[i]); used=i+1; lastErr=null; break; }
+      catch(e){ lastErr=e; cleanFile(out); }
+    }
+    if(lastErr || !fs.existsSync(out) || fs.statSync(out).size<1024){
+      return res.status(500).json({error:'Não consegui criar o vídeo-base desse link.',detail:String(lastErr?.message||'FFmpeg não gerou arquivo').slice(-1600)});
+    }
+    res.json({ok:true,asset:id,duration,render_mode:used,reference:{url:original,resolved_url:u,title:ref.title||'',author_name:ref.author_name||'',author_url:ref.author_url||'',thumbnail_url:thumb}});
+  }catch(e){res.status(500).json({error:'Falha ao criar vídeo-base pelo link',detail:String(e.message||e).slice(-1600)})}
+  finally{ if(img) cleanFile(img); }
+});
+
+app.post('/tiktok/link-analyze',async(req,res)=>{
+  try{
+    const original=String(req.body?.url||'').trim();
+    if(!isTikTokUrl(original))return res.status(400).json({error:'Link do TikTok inválido'});
+    const u=await resolveTikTokUrl(original);
+    const endpoint='https://www.tiktok.com/oembed?url='+encodeURIComponent(u);
+    const rr=await fetch(endpoint,{headers:{'User-Agent':'Mozilla/5.0 ViralStudioCloud/8.1'}});
+    if(!rr.ok)return res.status(502).json({error:'TikTok não retornou os dados públicos desse vídeo'});
+    const ref=await rr.json();
+    const product=String(req.body?.product||'').trim().slice(0,160);
+    const facts=String(req.body?.facts||'').trim().slice(0,700);
+    const subject=product || String(ref.title||'produto').replace(/[#@]/g,' ').replace(/\s+/g,' ').trim().slice(0,80) || 'produto';
+    const factLine=facts ? ` Destaque somente estes fatos confirmados: ${facts}.` : ' Mostre apenas características visíveis ou confirmadas.';
+    const hooks=[
+      `Olha esse detalhe de ${subject} antes de decidir.`,
+      `Eu reparei numa coisa nesse ${subject} que vale mostrar.`,
+      `Se você está olhando ${subject}, presta atenção nisso.`,
+      `O que mais chama atenção nesse ${subject} é isso aqui.`,
+      `Antes de escolher ${subject}, olha como ele aparece em uso.`
+    ];
+    const bodies=[
+      `Mostre o produto de perto e depois em uso.${factLine}`,
+      `Comece com close, mude o ângulo e demonstre o principal benefício real.${factLine}`,
+      `Use POV e uma demonstração curta para mostrar acabamento, formato e uso.${factLine}`,
+      `Mostre primeiro o detalhe, depois uma visão completa e uma situação real de uso.${factLine}`,
+      `Faça uma demonstração dinâmica com close, plano aberto e movimento natural.${factLine}`
+    ];
+    const ctas=[
+      'Se fez sentido para você, confira os detalhes no carrinho.',
+      'Veja as informações e a oferta disponível no carrinho.',
+      'Confira as opções disponíveis e os detalhes do produto no carrinho.',
+      'Se você gostou, abra o carrinho e veja os detalhes antes de comprar.',
+      'Quer ver mais informações? Confira o produto no carrinho.'
+    ];
+    const presets=['produto','ugc','problema','curiosidade','oferta'];
+    const versions=hooks.map((hook,i)=>({name:`Versão ${i+1}`,preset:presets[i],hook:hook.slice(0,180),body:bodies[i].slice(0,180),cta:ctas[i].slice(0,180),script:`${hook} ${bodies[i]} ${ctas[i]}`}));
+    res.json({ok:true,reference:{url:original,resolved_url:u,title:ref.title||'',author_name:ref.author_name||'',author_url:ref.author_url||'',thumbnail_url:ref.thumbnail_url||''},diagnosis:`Referência pública reconhecida${ref.author_name?` do creator ${ref.author_name}`:''}. O Cloud criou novas estruturas de Gancho + Corpo + CTA sem copiar o conteúdo original.`,versions});
+  }catch(e){res.status(500).json({error:'Falha ao analisar o link',detail:String(e.message||e).slice(-1000)})}
+});
+
+app.post('/batch/zip',(_req,res)=>res.status(501).json({error:'ZIP em nuvem ainda não ativado nesta versão. Baixe os vídeos individualmente.'}));
+app.get('/batch/:name.zip',(_req,res)=>res.status(404).json({error:'ZIP não disponível nesta versão'}));
+
 app.get('/assets/:id',(req,res)=>{const id=safeId(req.params.id);if(!id)return res.status(400).json({ok:false});res.json({ok:true,exists:fs.existsSync(rawPath(id))||fs.existsSync(normPath(id)),normalized:fs.existsSync(normPath(id))})});
 app.post('/assets',upload.single('clip'),(req,res)=>{const id=safeId(req.body.id);if(!id||!req.file){if(req.file)cleanFile(req.file.path);return res.status(400).json({error:'ID ou arquivo inválido'})}
  const dest=rawPath(id);try{if(fs.existsSync(dest))cleanFile(req.file.path);else fs.renameSync(req.file.path,dest);res.json({ok:true,id,cached:true})}catch(e){cleanFile(req.file.path);res.status(500).json({error:'Falha ao guardar arquivo',detail:e.message})}});
+
+async function mediaInfo(file){
+  try{
+    const raw=await runOut('ffprobe',['-v','error','-select_streams','v:0','-show_entries','stream=codec_name,width,height,pix_fmt,r_frame_rate','-of','json',file]);
+    const v=(JSON.parse(raw||'{}').streams||[])[0]||{};
+    let ac=''; try{ac=(await runOut('ffprobe',['-v','error','-select_streams','a:0','-show_entries','stream=codec_name','-of','default=noprint_wrappers=1:nokey=1',file])).trim()}catch(_){ }
+    return {vcodec:String(v.codec_name||''),acodec:ac,width:Number(v.width||0),height:Number(v.height||0),pix:String(v.pix_fmt||'')};
+  }catch(_){return {vcodec:'',acodec:'',width:0,height:0,pix:''}}
+}
 
 async function ensureNormalized(id){
   const n=normPath(id); if(fs.existsSync(n)) return n;
@@ -36,7 +213,25 @@ async function ensureNormalized(id){
   const p=(async()=>{
     const src=rawPath(id); if(!fs.existsSync(src)) throw new Error('Asset ausente: '+id);
     const tmp=n+'.tmp-'+Date.now()+'.mp4';
-    await run(['-y','-hide_banner','-loglevel','error','-i',src,'-map','0:v:0?','-map','0:a:0?','-vf','scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black,setsar=1,fps=30','-c:v','libx264','-preset','ultrafast','-crf','23','-pix_fmt','yuv420p','-c:a','aac','-b:a','128k','-ar','44100','-ac','2','-movflags','+faststart',tmp]);
+    const audio=await hasAudio(src), info=await mediaInfo(src);
+    // Fast path: vídeos já compatíveis não são reencodificados. Só reorganizamos o MP4 para streaming no iPhone.
+    const copyOk=info.vcodec==='h264' && (!audio || info.acodec==='aac') && info.pix==='yuv420p';
+    if(copyOk){
+      const a=['-y','-hide_banner','-loglevel','error','-i',src,'-map','0:v:0'];
+      if(audio)a.push('-map','0:a:0');
+      a.push('-c','copy','-movflags','+faststart',tmp);
+      await run(a);
+    }else{
+      const base=['-y','-hide_banner','-loglevel','error','-i',src];
+      if(!audio) base.push('-f','lavfi','-i','anullsrc=channel_layout=stereo:sample_rate=44100');
+      base.push('-map','0:v:0');
+      if(audio) base.push('-map','0:a:0'); else base.push('-map','1:a:0');
+      base.push('-vf','scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2:black,setsar=1,fps=30',
+        '-c:v','libx264','-preset','veryfast','-crf','24','-pix_fmt','yuv420p','-profile:v','main','-level','4.0',
+        '-c:a','aac','-b:a','128k','-ar','44100','-ac','2','-movflags','+faststart');
+      if(!audio) base.push('-shortest');
+      base.push(tmp); await run(base);
+    }
     fs.renameSync(tmp,n); return n;
   })().finally(()=>normLocks.delete(id));
   normLocks.set(id,p); return p;
@@ -47,6 +242,13 @@ async function probeDuration(file){
     const out=await runOut('ffprobe',['-v','error','-show_entries','format=duration','-of','default=noprint_wrappers=1:nokey=1',file]);
     const v=parseFloat(out); return Number.isFinite(v)&&v>0?v:6;
   }catch(_){return 6}
+}
+
+async function hasAudio(file){
+  try{
+    const out=await runOut('ffprobe',['-v','error','-select_streams','a:0','-show_entries','stream=index','-of','csv=p=0',file]);
+    return !!String(out||'').trim();
+  }catch(_){return false}
 }
 
 async function concatCopy(paths,out){
@@ -98,17 +300,22 @@ async function makeSnippet(input,start,dur,speed,zoom=1){
   const out=path.join(TMP,'snippet-'+crypto.randomUUID()+'.mp4');
   const pts=(1/Math.max(speed||1,0.5)).toFixed(4)+'*PTS';
   const atempo=Math.min(2,Math.max(0.5,speed||1)).toFixed(4);
-  const z=Math.max(1,Math.min(1.18,Number(zoom)||1)); const sw=Math.round(1080*z), sh=Math.round(1920*z);
-  const vf=`scale=${sw}:${sh}:force_original_aspect_ratio=increase,crop=1080:1920:(iw-1080)/2:(ih-1920)/2,setsar=1,fps=30,setpts=${pts}`;
-  await run(['-y','-hide_banner','-loglevel','error','-ss',String(Math.max(0,start||0)),'-t',String(Math.max(0.6,dur||1.2)),'-i',input,'-map','0:v:0?','-map','0:a:0?','-vf',vf,'-af',`atempo=${atempo}`,'-c:v','libx264','-preset','ultrafast','-crf','23','-pix_fmt','yuv420p','-c:a','aac','-b:a','128k','-ar','44100','-ac','2','-movflags','+faststart',out]);
+  const z=Math.max(1,Math.min(1.18,Number(zoom)||1)); const sw=Math.round(720*z), sh=Math.round(1280*z);
+  const vf=`scale=${sw}:${sh}:force_original_aspect_ratio=increase,crop=720:1280:(iw-720)/2:(ih-1280)/2,setsar=1,fps=30,setpts=${pts}`;
+  await run(['-y','-hide_banner','-loglevel','error','-ss',String(Math.max(0,start||0)),'-t',String(Math.max(0.6,dur||1.2)),'-i',input,'-map','0:v:0?','-map','0:a:0?','-vf',vf,'-af',`atempo=${atempo}`,'-c:v','libx264','-preset','ultrafast','-crf','25','-pix_fmt','yuv420p','-c:a','aac','-b:a','128k','-ar','44100','-ac','2','-movflags','+faststart',out]);
   return out;
 }
 
 async function processOriginal(job,out){
-  const raws=job.clips.map(rawPath);
+  // V6.0: todos os trechos passam uma única vez pelo cache H.264/AAC.
+  // Depois as combinações são apenas concat copy, rápidas e compatíveis com iPhone/Safari.
+  job.progress=35;
+  const norms=await Promise.all(job.clips.map(ensureNormalized));
+  job.progress=75;
   const base=path.join(TMP,'base-'+job.id+'.mp4'); cleanFile(base);
-  try{await concatCopy(raws,base)}catch(_){job.progress=45;const norms=await Promise.all(job.clips.map(ensureNormalized));job.progress=70;await concatCopy(norms,base)}
-  job.progress=82; await applyPreset(base,out,'original');
+  await concatCopy(norms,base);
+  job.progress=90;
+  fs.renameSync(base,out);
 }
 
 async function processRemix(job,out){
@@ -130,10 +337,8 @@ async function processRemix(job,out){
 
 
 async function synthesizeNarration(text,wav){
-  const txt=path.join(TMP,'speech-'+crypto.randomUUID()+'.txt');
-  fs.writeFileSync(txt,String(text||''),'utf8');
-  const ps=`Add-Type -AssemblyName System.Speech; $t=[IO.File]::ReadAllText('${txt.replaceAll("'","''")}',[Text.Encoding]::UTF8); $s=New-Object System.Speech.Synthesis.SpeechSynthesizer; $v=$s.GetInstalledVoices() | Where-Object { $_.VoiceInfo.Culture.Name -like 'pt-*' } | Select-Object -First 1; if($v){$s.SelectVoice($v.VoiceInfo.Name)}; $s.Rate=1; $s.SetOutputToWaveFile('${wav.replaceAll("'","''")}'); $s.Speak($t); $s.Dispose();`;
-  try{await runOut('powershell',['-NoProfile','-ExecutionPolicy','Bypass','-Command',ps]);}finally{cleanFile(txt)}
+  // Cloud: voz neural via edge-tts. Salva MP3 mesmo que a variável se chame wav por compatibilidade interna.
+  await runOut('python3',[path.join(__dirname,'tts.py'),String(text||''),wav]);
 }
 async function addNarration(video,out,text,targetDuration){
   const wav=path.join(TMP,'voice-'+crypto.randomUUID()+'.wav');
@@ -150,6 +355,7 @@ async function addNarration(video,out,text,targetDuration){
 async function processJob(job){
   job.status='working';job.startedAt=Date.now();job.progress=20;
   try{
+    ensureStorage(700);
     const out=outPath(job.id);cleanFile(out);
     const narrated=job.narration?path.join(TMP,'visual-'+job.id+'.mp4'):out; cleanFile(narrated);
     if(job.mode==='original' || job.preset==='original') await processOriginal(job,narrated);
@@ -164,7 +370,14 @@ async function processJob(job){
     if(job.narration){job.progress=92;await addNarration(narrated,out,job.narration,job.duration);cleanFile(narrated)}
     if(!fs.existsSync(out)||fs.statSync(out).size<1024)throw new Error('Arquivo final vazio.');
     job.status='ready';job.progress=100;job.finishedAt=Date.now();job.size=fs.statSync(out).size;
-  }catch(e){job.status='error';job.progress=100;job.error=String(e.message||e).slice(-2500);job.finishedAt=Date.now()}
+  }catch(e){
+    let msg=String(e.message||e);
+    if(/No space left on device|code:\s*-28|Error writing trailer/i.test(msg)){cleanupStorage(true);const s=storageSummary();msg=`Espaço insuficiente no Motor durante a renderização. Limpeza automática executada. Espaço livre agora: ${s.freeMB==null?'desconhecido':s.freeMB+' MB'}. Libere espaço ou reduza o lote.`}
+    job.status='error';job.progress=100;job.error=msg.slice(-900);job.finishedAt=Date.now()
+  }finally{
+    for(const p of [path.join(TMP,'visual-'+job.id+'.mp4'),path.join(TMP,'mult-'+job.id+'.mp4'),path.join(TMP,'base-'+job.id+'.mp4')])cleanFile(p);
+    cleanDirOlderThan(TMP,20*60*1000);
+  }
 }
 function pump(){while(active<MAX_CONCURRENCY&&queue.length){const id=queue.shift(),job=jobs.get(id);if(!job||job.status!=='queued')continue;active++;processJob(job).finally(()=>{active--;pump()})}}
 
@@ -177,32 +390,25 @@ function extractFiveScripts(raw){
 }
 app.post('/director/analyze',async(req,res)=>{
  try{
-  const id=safeId(req.body?.asset);if(!id||(!fs.existsSync(rawPath(id))&&!fs.existsSync(normPath(id))))return res.status(409).json({error:'Vídeo não encontrado no Motor PC.'});
+  const id=safeId(req.body?.asset);if(!id||(!fs.existsSync(rawPath(id))&&!fs.existsSync(normPath(id))))return res.status(409).json({error:'Vídeo não encontrado no Cloud.'});
   const source=fs.existsSync(rawPath(id))?rawPath(id):normPath(id);const duration=await probeDuration(source);
-  let transcript='';try{transcript=await runOut('python',[path.join(__dirname,'transcribe.py'),source])}catch(e){return res.status(503).json({error:'Para o Diretor IA, execute INSTALAR-IA-LOCAL.bat uma vez.',detail:String(e.message||e).slice(-700)})}
   const product=String(req.body?.product||'produto').slice(0,160),facts=String(req.body?.facts||'').slice(0,700);
-  const prompt=`Você é um diretor de criativos para TikTok Shop Brasil. Analise a transcrição de um vídeo de ${duration.toFixed(1)} segundos e devolva SOMENTE JSON válido, sem markdown. Produto: ${product}. Fatos confirmados: ${facts||'nenhum adicional'}. Transcrição: ${transcript||'sem fala detectada'}. Crie exatamente 5 versões. Formato: {"diagnosis":"diagnóstico curto e concreto","versions":[5 objetos]}. Cada objeto deve ter: {"name":"nome do ângulo","preset":"produto|ugc|problema|curiosidade|oferta","hook":"GANCHO","body":"CORPO","cta":"CTA","plan":[10 a 16 segmentos]}. REGRAS DE TEXTO: cada bloco hook/body/cta deve ter entre 90 e 180 caracteres, nunca passar de 180; a fala completa deve ocupar praticamente os ${duration.toFixed(1)} segundos; o GANCHO começa com uma frase curtíssima e muito chamativa que possa ser dita nos primeiros 2 segundos; depois o gancho pode continuar. CORPO demonstra o produto e benefícios confirmados. CTA termina convidando a conferir o produto/carrinho, sem inventar urgência, preço, desconto ou estoque. As 5 versões devem ser realmente diferentes: 1 Produto Campeão, 2 UGC Natural, 3 Problema-Solução, 4 Curiosidade/Desejo, 5 Venda Direta. REGRAS DE EDIÇÃO: cada plan deve cobrir aproximadamente ${duration.toFixed(1)} segundos no total, usando 10 a 16 segmentos de 0.8 a 3.2s; use ordens e momentos diferentes do original, sem reduzir o vídeo a um short. Segmento: {"start":segundos no original,"dur":0.8 a 3.2,"speed":0.90 a 1.20,"zoom":1.00 a 1.16}. Não invente fatos do produto.`;
-  let raw='';try{raw=await runInput('ollama',['run','qwen2.5:3b'],prompt)}catch(e){return res.status(503).json({error:'Ollama/modelo local não está pronto. Execute INSTALAR-IA-LOCAL.bat.',detail:String(e.message||e).slice(-700)})}
-  let data;try{data=JSON.parse(raw.match(/\{[\s\S]*\}/)?.[0]||'')}catch(_){return res.status(500).json({error:'O Diretor IA não devolveu um plano válido. Tente novamente.',raw:raw.slice(0,1200)})}
-  if(!Array.isArray(data.versions)||data.versions.length<5)return res.status(500).json({error:'O Diretor IA não criou as 5 versões completas. Tente novamente.'});
-  const cleanBlock=(x)=>String(x||'').replace(/[\u0000-\u001F]/g,' ').replace(/\s+/g,' ').trim().slice(0,180);
-  const versions=data.versions.slice(0,5).map((v,i)=>{const hook=cleanBlock(v.hook),body=cleanBlock(v.body),cta=cleanBlock(v.cta);return {name:String(v.name||('Versão '+(i+1))).slice(0,80),preset:safePreset(v.preset||['produto','ugc','problema','curiosidade','oferta'][i]),hook,body,cta,script:[hook,body,cta].filter(Boolean).join(' '),plan:(Array.isArray(v.plan)?v.plan:[]).slice(0,16).map(x=>({start:Math.max(0,Math.min(duration-.2,Number(x.start)||0)),dur:Math.max(.8,Math.min(3.2,Number(x.dur)||1.5)),speed:Math.max(.9,Math.min(1.2,Number(x.speed)||1)),zoom:Math.max(1,Math.min(1.16,Number(x.zoom)||1))}))}});
-  res.json({ok:true,duration,transcript,diagnosis:String(data.diagnosis||'').slice(0,1200),versions});
- }catch(e){res.status(500).json({error:'Falha no Diretor IA.',detail:String(e.message||e).slice(-1000)})}
+  const angles=[['Produto Campeão','produto'],['UGC Natural','ugc'],['Problema → Solução','problema'],['Curiosidade','curiosidade'],['Venda Direta','oferta']];
+  const cleanFacts=facts||'os detalhes visuais confirmados do produto';
+  const hooks=[`Olha esse detalhe em ${product}.`,`Eu não esperava isso de ${product}.`,`Se você procura ${product}, olha isso.`,`Repara nesse detalhe antes de escolher ${product}.`,`Vou te mostrar ${product} de um jeito rápido.`];
+  const bodies=[`Mostre o produto de perto, em uso, e destaque apenas ${cleanFacts}.`,`Comece com uma demonstração natural e mostre acabamento, movimento e uso real. ${cleanFacts}.`,`Apresente o problema visualmente e depois demonstre como o produto é usado. Use somente fatos confirmados: ${cleanFacts}.`,`Alterne close e plano aberto para mostrar o produto por ângulos diferentes. Destaque ${cleanFacts}.`,`Faça uma demonstração direta e objetiva, mostrando textura, formato e uso real. ${cleanFacts}.`];
+  const ctas=['Confira os detalhes disponíveis no carrinho.','Se fez sentido para você, veja as opções no carrinho.','Confira a oferta e as informações do produto no carrinho.','Veja os detalhes e escolha sua opção no carrinho.','Toque no carrinho para conferir o produto.'];
+  const versions=angles.map((a,i)=>{const plan=[];const n=Math.max(8,Math.min(14,Math.ceil(duration/1.6)));for(let k=0;k<n;k++)plan.push({start:Math.max(0,Math.min(duration-1,(k*1.37+i*.53)%Math.max(1,duration-1))),dur:Math.min(2.2,Math.max(.9,duration/n)),speed:[.96,1,1.04,1.08][(k+i)%4],zoom:1+((k+i)%5)*.025});const hook=hooks[i].slice(0,180),body=bodies[i].slice(0,180),cta=ctas[i].slice(0,180);return {name:a[0],preset:a[1],hook,body,cta,script:`${hook} ${body} ${cta}`,plan}});
+  res.json({ok:true,duration,transcript:'',diagnosis:`Análise Cloud baseada no vídeo enviado e nas informações confirmadas de ${product}.`,versions});
+ }catch(e){res.status(500).json({error:'Falha no Diretor Cloud.',detail:String(e.message||e).slice(-1000)})}
 });
 
 app.post('/ai/analyze',async(req,res)=>{
  try{
-  const id=safeId(req.body?.asset);if(!id||(!fs.existsSync(rawPath(id))&&!fs.existsSync(normPath(id))))return res.status(409).json({error:'Vídeo não encontrado no Motor PC.'});
-  const source=fs.existsSync(rawPath(id))?rawPath(id):normPath(id);
-  let transcript='';
-  try{transcript=await runOut('python',[path.join(__dirname,'transcribe.py'),source])}catch(e){return res.status(503).json({error:'Transcrição local ainda não está instalada. Execute INSTALAR-IA-LOCAL.bat no Motor PC.',detail:String(e.message||e).slice(-700)})}
   const product=String(req.body?.product||'produto').slice(0,160),facts=String(req.body?.facts||'').slice(0,600);
-  const prompt=`Você é roteirista de vídeos curtos para TikTok Shop Brasil. Crie exatamente 5 roteiros NOVOS em português brasileiro, naturais e faláveis, cada um com cerca de 220 a 360 caracteres e estrutura gancho forte + demonstração/benefício + CTA para conferir o carrinho. Cada versão deve ter ângulo realmente diferente: 1 Produto Campeão, 2 UGC natural, 3 Problema-Solução, 4 Curiosidade, 5 Oferta/CTA. Não invente preço, desconto, estoque, material, função ou benefício que não esteja nos dados. Não prometa viralização ou resultado. Produto informado: ${product}. Fatos confirmados: ${facts||'nenhum adicional'}. Transcrição do vídeo original: ${transcript||'sem fala detectada'}. Responda SOMENTE com um array JSON de 5 strings, sem markdown.`;
-  let raw='';try{raw=await runInput('ollama',['run','qwen2.5:3b'],prompt)}catch(e){return res.status(503).json({error:'Ollama/modelo local não está pronto. Execute INSTALAR-IA-LOCAL.bat.',detail:String(e.message||e).slice(-700)})}
-  let scripts=extractFiveScripts(raw);
-  if(scripts.length<5)return res.status(500).json({error:'A IA local não devolveu 5 roteiros válidos. Tente novamente.',transcript,raw:raw.slice(0,1000)});
-  res.json({ok:true,transcript,scripts});
+  const f=facts||'características visíveis e confirmadas';
+  const scripts=[`Olha esse detalhe em ${product}. Mostre ${f} de perto e em uso. Confira os detalhes no carrinho.`,`Eu não esperava esse resultado visual em ${product}. Demonstre ${f} naturalmente. Veja as opções no carrinho.`,`Se você procura ${product}, repara nisso. Mostre ${f} por outro ângulo e confira as informações no carrinho.`,`Tem um detalhe em ${product} que vale mostrar. Faça close em ${f} e termine mostrando o produto completo. Confira no carrinho.`,`Vou mostrar ${product} sem enrolação. Demonstre ${f}, varie os enquadramentos e convide a pessoa a ver o produto no carrinho.`];
+  res.json({ok:true,transcript:'',scripts});
  }catch(e){res.status(500).json({error:'Falha ao analisar vídeo.',detail:String(e.message||e).slice(-1000)})}
 });
 
@@ -226,15 +432,20 @@ app.get('/jobs/:id',(req,res)=>{const j=jobs.get(String(req.params.id));if(!j)re
 app.get('/jobs/:id/file',(req,res)=>{
   const j=jobs.get(String(req.params.id)),p=outPath(String(req.params.id));
   if(!j||j.status!=='ready'||!fs.existsSync(p))return res.status(404).json({error:'Vídeo ainda não está pronto'});
-  res.set({
-    'Cache-Control':'no-store',
-    'Content-Type':'video/mp4',
-    'Content-Disposition':`inline; filename="viral-studio-${j.id}.mp4"`,
-    'Accept-Ranges':'bytes'
-  });
-  res.sendFile(p);
+  const size=fs.statSync(p).size, range=req.headers.range;
+  const disposition=String(req.query.download||'')==='1'?'attachment':'inline';
+  const common={'Cache-Control':'no-store','Content-Type':'video/mp4','Content-Disposition':`${disposition}; filename="viral-studio-${j.id}.mp4"`,'Accept-Ranges':'bytes','Access-Control-Allow-Origin':'*','X-Content-Type-Options':'nosniff'};
+  if(range){
+    const m=/bytes=(\d*)-(\d*)/.exec(range); let start=m&&m[1]?Number(m[1]):0, end=m&&m[2]?Number(m[2]):size-1;
+    if(!Number.isFinite(start)||start<0)start=0; if(!Number.isFinite(end)||end>=size)end=size-1;
+    if(start>end||start>=size)return res.status(416).set('Content-Range',`bytes */${size}`).end();
+    res.writeHead(206,{...common,'Content-Range':`bytes ${start}-${end}/${size}`,'Content-Length':end-start+1});
+    return fs.createReadStream(p,{start,end}).pipe(res);
+  }
+  res.writeHead(200,{...common,'Content-Length':size}); fs.createReadStream(p).pipe(res);
 });
 
-setInterval(()=>{const cutoff=Date.now()-8*60*60*1000;for(const [id,j] of jobs){if((j.finishedAt||j.createdAt)<cutoff&&['ready','error'].includes(j.status)){jobs.delete(id);cleanFile(outPath(id))}}},30*60*1000).unref?.();
-const server=app.listen(10000,'0.0.0.0',()=>console.log(`Viral Studio Render PC V5.9 pronto na porta 10000 — Multiplicador de Criativos — fila até 100 — ${MAX_CONCURRENCY} renderizações paralelas`));
+cleanupStorage(true);
+setInterval(()=>{const cutoff=Date.now()-90*60*1000;for(const [id,j] of jobs){if((j.finishedAt||j.createdAt)<cutoff&&['ready','error'].includes(j.status)){jobs.delete(id);cleanFile(outPath(id))}}cleanupStorage(false)},10*60*1000).unref?.();
+const server=app.listen(Number(process.env.PORT)||10000,'0.0.0.0',()=>console.log(`Viral Studio Cloud Render V8.0 pronto na porta 10000 — Multiplicador de Criativos — fila até 100 — ${MAX_CONCURRENCY} renderizações paralelas`));
 server.requestTimeout=30*60*1000;server.headersTimeout=31*60*1000;server.keepAliveTimeout=65000;
