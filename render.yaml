@@ -2,7 +2,7 @@ services:
   - type: web
     name: viral-studio-motor-cloud
     runtime: docker
-    plan: starter
+    plan: free
     healthCheckPath: /health
     autoDeploy: true
     envVars:
@@ -14,3 +14,10 @@ services:
         value: "1"
       - key: MAX_BATCH
         value: "10"
+
+      - key: POLLINATIONS_API_KEY
+        sync: false
+      - key: POLLINATIONS_VIDEO_MODEL
+        value: "minimax/minimax-h3-max-turbo"
+      - key: POLLINATIONS_VISION_MODEL
+        value: "google/gemini-2.5-flash-lite"

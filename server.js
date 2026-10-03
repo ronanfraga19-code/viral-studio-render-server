@@ -54,18 +54,26 @@ function cleanupStorage(aggressive=false){
 }
 function ensureStorage(minFreeMB=700){
   cleanupStorage(false); let d=diskInfo();
-  if(d.free!=null&&d.free<minFreeMB*1024*1024){cleanupStorage(true);d=diskInfo();}
+  if(d.free!=null&&d.free<minFreeMB*1024*1024){
+app.get('/queue/state',(_req,res)=>res.json({ok:true,active,queued:queue.length,items:queue.slice(0,20)}));
+app.post('/queue/kick',(_req,res)=>{pump();res.json({ok:true,active,queued:queue.length})});
+
+cleanupStorage(true);d=diskInfo();}
   if(d.free!=null&&d.free<350*1024*1024){const mb=Math.max(0,Math.round(d.free/1024/1024));throw new Error(`Espaço insuficiente no Motor (${mb} MB livres). A limpeza automática já foi executada. Libere espaço no disco ou use o Motor Cloud.`)}
 }
-function run(args){return new Promise((ok,no)=>{const p=spawn('ffmpeg',args,{stdio:['ignore','ignore','pipe'],windowsHide:true});let e='';p.stderr.on('data',d=>{e=(e+d).slice(-16000)});p.on('error',no);p.on('close',c=>c===0?ok():no(new Error(e||('ffmpeg '+c))) )})}
-function runOut(bin,args){return new Promise((ok,no)=>{const p=spawn(bin,args,{stdio:['ignore','pipe','pipe'],windowsHide:true});let out='',err='';p.stdout.on('data',d=>out+=d);p.stderr.on('data',d=>err+=d);p.on('error',no);p.on('close',c=>c===0?ok(out.trim()):no(new Error(err||out||bin+' '+c)))})}
+function run(args,timeoutMs=240000){return new Promise((ok,no)=>{const p=spawn('ffmpeg',args,{stdio:['ignore','ignore','pipe'],windowsHide:true});let e='',done=false;const t=setTimeout(()=>{if(done)return;done=true;try{p.kill('SIGKILL')}catch(_){};no(new Error('FFmpeg excedeu o tempo limite e foi reiniciado automaticamente.'))},timeoutMs);p.stderr.on('data',d=>{e=(e+d).slice(-16000)});p.on('error',err=>{if(done)return;done=true;clearTimeout(t);no(err)});p.on('close',c=>{if(done)return;done=true;clearTimeout(t);c===0?ok():no(new Error(e||('ffmpeg '+c)))})})}
+function runOut(bin,args,timeoutMs=120000){return new Promise((ok,no)=>{const p=spawn(bin,args,{stdio:['ignore','pipe','pipe'],windowsHide:true});let out='',err='',done=false;const t=setTimeout(()=>{if(done)return;done=true;try{p.kill('SIGKILL')}catch(_){};no(new Error(bin+' excedeu o tempo limite.'))},timeoutMs);p.stdout.on('data',d=>out+=d);p.stderr.on('data',d=>err+=d);p.on('error',e=>{if(done)return;done=true;clearTimeout(t);no(e)});p.on('close',c=>{if(done)return;done=true;clearTimeout(t);c===0?ok(out.trim()):no(new Error(err||out||bin+' '+c))})})}
 function runInput(bin,args,input){return new Promise((ok,no)=>{const p=spawn(bin,args,{stdio:['pipe','pipe','pipe'],windowsHide:true});let out='',err='';p.stdout.on('data',d=>out+=d);p.stderr.on('data',d=>err+=d);p.on('error',no);p.on('close',c=>c===0?ok(out.trim()):no(new Error(err||out||bin+' '+c)));p.stdin.end(input)})}
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
 
-app.get('/',(_q,r)=>r.json({ok:true,service:'Viral Studio Motor Cloud',version:'8.5',maxBatch:20,concurrency:MAX_CONCURRENCY,mode:'cloud-render'}));
-app.get('/health',(_q,r)=>r.json({ok:true,service:'Viral Studio Motor Cloud',engine:'cloud',version:'8.5',mode:'cloud-render',maxBatch:20,concurrency:MAX_CONCURRENCY,active,queued:queue.length,storage:storageSummary(),capabilities:{linkMp4:true,linkInfo:true,linkAnalyze:true,batchZip:false,autoCleanup:true,mobile720p:true,uploadMp4:true,dynamicMotion:true,multiVoiceTTS:true,influencerSwap:false}}));
+app.get('/',(_q,r)=>r.json({ok:true,service:'Viral Studio Motor Cloud',version:'9.0',maxBatch:20,concurrency:MAX_CONCURRENCY,mode:'cloud-render'}));
+app.get('/health',(_q,r)=>r.json({ok:true,service:'Viral Studio Motor Cloud',engine:'cloud',version:'9.0',mode:'cloud-render',maxBatch:20,concurrency:MAX_CONCURRENCY,active,queued:queue.length,storage:storageSummary(),capabilities:{linkMp4:true,linkInfo:true,linkAnalyze:true,batchZip:false,autoCleanup:true,mobile720p:true,uploadMp4:true,aiReal:true,newVideoFromReference:true,originalFramesReused:false}}));
 app.get('/storage',(_q,r)=>r.json({ok:true,...storageSummary()}));
-app.post('/storage/cleanup',(_q,r)=>{const freed=cleanupStorage(true);r.json({ok:true,freedMB:Math.round(freed/1024/1024),...storageSummary()})});
+app.post('/storage/cleanup',(_q,r)=>{const freed=
+app.get('/queue/state',(_req,res)=>res.json({ok:true,active,queued:queue.length,items:queue.slice(0,20)}));
+app.post('/queue/kick',(_req,res)=>{pump();res.json({ok:true,active,queued:queue.length})});
+
+cleanupStorage(true);r.json({ok:true,freedMB:Math.round(freed/1024/1024),...storageSummary()})});
 function isTikTokUrl(v){
   try{const u=new URL(String(v||'').trim());return (u.protocol==='https:'||u.protocol==='http:')&&/(^|\.)tiktok\.com$/i.test(u.hostname)}catch(_){return false}
 }
@@ -309,20 +317,12 @@ function buildStrategy(preset,durs,intensity,goal,duration){
   if(goal==='retencao') base=[base[0],base[2],base[1],...base.slice(3)];
   return base.map(seg=>{const clipDur=durs[seg.i]||6;const start=Math.max(0,Math.min(Math.max(clipDur-.6,0),clipDur*seg.startFrac));const maxDur=Math.max(.65,clipDur-start-.05);return {clipIndex:seg.i,start,dur:Math.min(seg.reqDur,maxDur),speed:seg.speed,zoom:seg.zoom};});
 }
-async function makeSnippet(input,start,dur,speed,zoom=1,variant=0){
+async function makeSnippet(input,start,dur,speed,zoom=1){
   const out=path.join(TMP,'snippet-'+crypto.randomUUID()+'.mp4');
   const pts=(1/Math.max(speed||1,0.5)).toFixed(4)+'*PTS';
   const atempo=Math.min(2,Math.max(0.5,speed||1)).toFixed(4);
-  const z=Math.max(1.03,Math.min(1.22,Number(zoom)||1.06));
-  const sw=Math.round(720*z), sh=Math.round(1280*z);
-  const motions=[
-    {x:'(iw-720)/2+18*sin(n/16)',y:'(ih-1280)/2'},
-    {x:'(iw-720)/2',y:'(ih-1280)/2+22*sin(n/18)'},
-    {x:'(iw-720)/2+14*sin(n/14)',y:'(ih-1280)/2+10*cos(n/17)'},
-    {x:'(iw-720)/2-16*sin(n/20)',y:'(ih-1280)/2+8*sin(n/13)'}
-  ];
-  const m=motions[Math.abs(Number(variant)||0)%motions.length];
-  const vf=`scale=${sw}:${sh}:force_original_aspect_ratio=increase,crop=720:1280:${m.x}:${m.y},setsar=1,fps=30,setpts=${pts}`;
+  const z=Math.max(1,Math.min(1.18,Number(zoom)||1)); const sw=Math.round(720*z), sh=Math.round(1280*z);
+  const vf=`scale=${sw}:${sh}:force_original_aspect_ratio=increase,crop=720:1280:(iw-720)/2:(ih-1280)/2,setsar=1,fps=30,setpts=${pts}`;
   await run(['-y','-hide_banner','-loglevel','error','-ss',String(Math.max(0,start||0)),'-t',String(Math.max(0.6,dur||1.2)),'-i',input,'-map','0:v:0?','-map','0:a:0?','-vf',vf,'-af',`atempo=${atempo}`,'-c:v','libx264','-preset','ultrafast','-crf','25','-pix_fmt','yuv420p','-c:a','aac','-b:a','128k','-ar','44100','-ac','2','-movflags','+faststart',out]);
   return out;
 }
@@ -349,7 +349,7 @@ async function processRemix(job,out){
   const parts=[];
   try{
     let idx=0;
-    for(const seg of plan){ idx++; job.progress=35+Math.round((idx/plan.length)*35); parts.push(await makeSnippet(inputs[seg.clipIndex],seg.start,seg.dur,seg.speed,seg.zoom,idx)); }
+    for(const seg of plan){ idx++; job.progress=35+Math.round((idx/plan.length)*35); parts.push(await makeSnippet(inputs[seg.clipIndex],seg.start,seg.dur,seg.speed,seg.zoom)); }
     const base=path.join(TMP,'base-'+job.id+'.mp4'); cleanFile(base);
     await concatCopy(parts,base);
     job.progress=82; await applyPreset(base,out,job.preset);
@@ -372,7 +372,7 @@ async function synthesizeNarration(text,wav){
   throw last||new Error('Falha temporária ao gerar a voz.');
 }
 async function addNarration(video,out,text,targetDuration){
-  const wav=path.join(TMP,'voice-'+crypto.randomUUID()+'.wav');
+  const wav=path.join(TMP,'voice-'+crypto.randomUUID()+'.mp3');
   try{
     await synthesizeNarration(text,wav);
     const vd=Math.max(1,Number(targetDuration)||await probeDuration(video));
@@ -424,7 +424,11 @@ async function processJob(job){
     job.status='ready';job.progress=100;job.finishedAt=Date.now();job.size=fs.statSync(out).size;
   }catch(e){
     let msg=String(e.message||e);
-    if(/No space left on device|code:\s*-28|Error writing trailer/i.test(msg)){cleanupStorage(true);const s=storageSummary();msg=`Espaço insuficiente no Motor durante a renderização. Limpeza automática executada. Espaço livre agora: ${s.freeMB==null?'desconhecido':s.freeMB+' MB'}. Libere espaço ou reduza o lote.`}
+    if(/No space left on device|code:\s*-28|Error writing trailer/i.test(msg)){
+app.get('/queue/state',(_req,res)=>res.json({ok:true,active,queued:queue.length,items:queue.slice(0,20)}));
+app.post('/queue/kick',(_req,res)=>{pump();res.json({ok:true,active,queued:queue.length})});
+
+cleanupStorage(true);const s=storageSummary();msg=`Espaço insuficiente no Motor durante a renderização. Limpeza automática executada. Espaço livre agora: ${s.freeMB==null?'desconhecido':s.freeMB+' MB'}. Libere espaço ou reduza o lote.`}
     job.status='error';job.progress=Math.min(99,Math.max(1,Number(job.progress||1)));job.error=msg.slice(-900);job.finishedAt=Date.now()
   }finally{
     for(const p of [path.join(TMP,'visual-'+job.id+'.mp4'),path.join(TMP,'mult-'+job.id+'.mp4'),path.join(TMP,'base-'+job.id+'.mp4')])cleanFile(p);
@@ -463,6 +467,102 @@ app.post('/ai/analyze',async(req,res)=>{
   res.json({ok:true,transcript:'',scripts});
  }catch(e){res.status(500).json({error:'Falha ao analisar vídeo.',detail:String(e.message||e).slice(-1000)})}
 });
+
+
+// ===== V9.0 — IA REAL: referência entra, vídeo original NÃO é reutilizado =====
+const REAL_AI_KEY=String(process.env.POLLINATIONS_API_KEY||'').trim();
+const REAL_AI_VIDEO_MODEL=String(process.env.POLLINATIONS_VIDEO_MODEL||'minimax/minimax-h3-max-turbo').trim();
+const REAL_AI_VISION_MODEL=String(process.env.POLLINATIONS_VISION_MODEL||'google/gemini-2.5-flash-lite').trim();
+const aiJobs=new Map(), aiQueue=[]; let aiActive=0;
+
+function stripJsonFence(v){return String(v||'').replace(/^```(?:json)?\s*/i,'').replace(/```\s*$/,'').trim()}
+function safeText(v,n=1000){return String(v||'').replace(/[\u0000-\u001f]+/g,' ').replace(/\s+/g,' ').trim().slice(0,n)}
+function defaultDNA(product,facts,meta={}){
+  const title=safeText(meta.title||'',220);
+  const p=safeText(product||title||'produto mostrado na referência',160);
+  const f=safeText(facts||'',500);
+  return {
+    product:p,
+    product_visual:f||'preserve as características visuais observáveis do produto, sem inventar marca, material ou função',
+    idea:'vídeo UGC de venda curto, dinâmico e natural',
+    selling_angle:'mostrar o produto em uso, alternando detalhe e plano completo',
+    movement:'a influencer caminha, vira o corpo, aproxima o produto da câmera e demonstra com as mãos; câmera acompanha com movimento natural',
+    scene:'ambiente realista e iluminado, adequado ao produto',
+    voice_style:'português brasileiro natural, ritmo de TikTok Shop',
+    source_title:title,
+    variants:['entrada caminhando e demonstração em close','plano médio com giro e câmera acompanhando','POV de produto e corte para influencer em uso','entrada lateral, detalhe do produto e plano completo','demonstração rápida em cenário alternativo']
+  };
+}
+async function extractIdeaFrames(asset){
+  const id=safeId(asset); if(!id)throw new Error('Asset inválido');
+  const src=fs.existsSync(rawPath(id))?rawPath(id):normPath(id); if(!fs.existsSync(src))throw new Error('Vídeo de referência não encontrado');
+  const d=Math.max(1,await probeDuration(src)); const points=[.18,.5,.82].map(x=>Math.max(0,Math.min(d-.1,d*x)));
+  const frames=[];
+  for(let i=0;i<points.length;i++){
+    const f=path.join(TMP,`dna-${id}-${i}-${Date.now()}.jpg`);
+    await run(['-y','-hide_banner','-loglevel','error','-ss',points[i].toFixed(3),'-i',src,'-frames:v','1','-vf','scale=512:-2','-q:v','3',f]);
+    const b=fs.readFileSync(f); cleanFile(f); frames.push('data:image/jpeg;base64,'+b.toString('base64'));
+  }
+  return frames;
+}
+async function visionDNA(images,product,facts,meta={}){
+  if(!REAL_AI_KEY)return defaultDNA(product,facts,meta);
+  const prompt=`Analise estas imagens de um vídeo de referência para TikTok Shop. NÃO identifique a pessoa e NÃO copie a identidade dela. O vídeo original servirá apenas como inspiração. Descreva o produto visível, a ideia criativa, cenário, movimentos, enquadramentos e ângulo de venda. O novo vídeo deve usar uma influencer adulta claramente diferente, sem copiar rosto/corpo/identidade, e deve manter apenas as características visuais observáveis do produto. Remova da ideia qualquer texto, legenda, marca d'água, interface ou logo do vídeo original. Produto informado: ${safeText(product||'não informado',160)}. Fatos confirmados: ${safeText(facts||'nenhum',500)}. Responda SOMENTE JSON com: product, product_visual, idea, selling_angle, movement, scene, voice_style, variants (array com 5 ideias curtas).`;
+  const body={model:REAL_AI_VISION_MODEL,response_format:{type:'json_object'},messages:[{role:'user',content:[{type:'text',text:prompt},...images.map(u=>({type:'image_url',image_url:{url:u}}))]}]};
+  const r=await fetch('https://gen.pollinations.ai/v1/chat/completions',{method:'POST',headers:{'Authorization':'Bearer '+REAL_AI_KEY,'Content-Type':'application/json'},body:JSON.stringify(body)});
+  if(!r.ok)throw new Error('Falha na análise visual IA: HTTP '+r.status+' '+safeText(await r.text(),300));
+  const j=await r.json(); const content=j?.choices?.[0]?.message?.content||'';
+  try{const x=JSON.parse(stripJsonFence(content));return {...defaultDNA(product,facts,meta),...x,variants:Array.isArray(x.variants)?x.variants.slice(0,5):defaultDNA(product,facts,meta).variants};}catch(_){return defaultDNA(product,facts,meta)}
+}
+async function linkDNA(url,product,facts){
+  const original=safeText(url,500); if(!isTikTokUrl(original))throw new Error('Link do TikTok inválido');
+  const u=await resolveTikTokUrl(original), endpoint='https://www.tiktok.com/oembed?url='+encodeURIComponent(u);
+  const rr=await fetch(endpoint,{headers:{'User-Agent':'ViralStudioIAReal/9.0'}}); if(!rr.ok)throw new Error('TikTok não retornou a referência pública');
+  const ref=await rr.json(), thumb=safeText(ref.thumbnail_url||'',1000); let imgs=[];
+  if(thumb){try{const ir=await fetch(thumb);if(ir.ok){const b=Buffer.from(await ir.arrayBuffer());imgs=['data:image/jpeg;base64,'+b.toString('base64')]}}catch(_){}}
+  return visionDNA(imgs,product,facts,{title:ref.title||'',author_name:ref.author_name||''});
+}
+function realPrompt(dna,variant,duration,index){
+  const scenarios=['quarto moderno com luz natural','loja clean e elegante','área externa urbana durante o dia','closet minimalista','sala contemporânea bem iluminada'];
+  const scene=safeText((dna.variants&&dna.variants[index%Math.max(1,dna.variants.length)])||variant||dna.scene||scenarios[index%scenarios.length],300);
+  return `Vertical 9:16 realistic UGC TikTok Shop video, ${Math.max(4,Math.min(10,Number(duration)||8))} seconds. Create a COMPLETELY NEW video from scratch. Adult Brazilian female influencer with a clearly different appearance from any reference person; do not imitate, recreate, face-match or clone any real person. Product: ${safeText(dna.product,180)}. Preserve only these observable product characteristics: ${safeText(dna.product_visual,420)}. Creative idea: ${safeText(dna.idea,260)}. Selling angle: ${safeText(dna.selling_angle,260)}. Action and movement: ${safeText(dna.movement,360)}. Scene variation: ${scene}. Dynamic natural body movement: walk, turn, use hands, show product close to camera, then full-body or wider view; camera tracks naturally with multiple framings. Do not make a static photo animation and do not use repetitive zoom in/zoom out as the main motion. No on-screen text, no captions, no subtitles, no watermarks, no TikTok UI, no usernames, no logos copied from the reference. Clean realistic lighting, believable hands and product interaction, mobile phone UGC look, high detail. Do not copy any original video frame.`;
+}
+async function generateRealVideo(prompt,duration,dest){
+  if(!REAL_AI_KEY)throw new Error('IA Real ainda não tem créditos/chave configurados no servidor.');
+  const d=Math.max(4,Math.min(10,Number(duration)||8));
+  const url='https://gen.pollinations.ai/video/'+encodeURIComponent(prompt)+'?model='+encodeURIComponent(REAL_AI_VIDEO_MODEL)+'&duration='+encodeURIComponent(d);
+  const c=new AbortController(), timer=setTimeout(()=>c.abort(),12*60*1000);
+  try{
+    const r=await fetch(url,{headers:{'Authorization':'Bearer '+REAL_AI_KEY,'Accept':'video/mp4,application/octet-stream'},signal:c.signal});
+    if(!r.ok)throw new Error('Gerador IA respondeu HTTP '+r.status+': '+safeText(await r.text(),500));
+    const ct=String(r.headers.get('content-type')||'');
+    if(!ct.includes('video')&&!ct.includes('octet-stream'))throw new Error('Gerador IA não retornou MP4: '+ct);
+    const b=Buffer.from(await r.arrayBuffer()); if(b.length<10000)throw new Error('Gerador IA retornou arquivo vazio/pequeno.');
+    const raw=dest+'.raw.mp4'; fs.writeFileSync(raw,b);
+    await run(['-y','-hide_banner','-loglevel','error','-i',raw,'-vf','scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,setsar=1,fps=24,format=yuv420p','-an','-c:v','libx264','-preset','veryfast','-crf','23','-pix_fmt','yuv420p','-movflags','+faststart',dest]);
+    cleanFile(raw);
+  }finally{clearTimeout(timer)}
+}
+async function processAIJob(job){
+  job.status='working';job.progress=12;job.startedAt=Date.now();
+  const out=outPath(job.id), visual=path.join(TMP,'aireal-'+job.id+'.mp4'); cleanFile(out);cleanFile(visual);
+  try{
+    ensureStorage(700);job.progress=20;
+    await generateRealVideo(job.prompt,job.duration,visual);job.progress=82;
+    if(job.narration){try{await addNarration(visual,out,job.narration,job.duration)}catch(e){fs.copyFileSync(visual,out);job.warning='Vídeo criado pela IA; a narração não pôde ser aplicada nesta tentativa.'}}
+    else fs.copyFileSync(visual,out);
+    job.progress=96;await runOut('ffprobe',['-v','error','-show_entries','format=duration','-of','default=noprint_wrappers=1:nokey=1',out]);
+    job.status='ready';job.progress=100;job.size=fs.statSync(out).size;job.finishedAt=Date.now();
+  }catch(e){job.status='error';job.error=safeText(e.message||e,900);job.progress=Math.max(1,Math.min(99,job.progress||1));job.finishedAt=Date.now();}
+  finally{cleanFile(visual)}
+}
+function aiPump(){while(aiActive<1&&aiQueue.length){const id=aiQueue.shift(),j=aiJobs.get(id);if(!j||j.status!=='queued')continue;aiActive++;processAIJob(j).finally(()=>{aiActive--;aiPump()})}}
+app.get('/ai-real/status',(_q,res)=>res.json({ok:true,version:'9.0',mode:'new-video-from-reference',configured:!!REAL_AI_KEY,videoModel:REAL_AI_VIDEO_MODEL,visionModel:REAL_AI_VISION_MODEL,originalFramesReused:false,audio:'new-tts'}));
+app.post('/ai-real/analyze',async(req,res)=>{try{const product=safeText(req.body?.product||'',160),facts=safeText(req.body?.facts||'',600);let dna;if(req.body?.asset){dna=await visionDNA(await extractIdeaFrames(req.body.asset),product,facts,{})}else if(req.body?.url){dna=await linkDNA(req.body.url,product,facts)}else return res.status(400).json({error:'Envie asset ou url'});res.json({ok:true,dna,originalFramesReused:false});}catch(e){res.status(500).json({error:'Falha ao extrair a ideia do vídeo.',detail:safeText(e.message||e,700)})}});
+app.post('/ai-real/jobs',(req,res)=>{const dna=req.body?.dna||{};const idx=Math.max(0,Number(req.body?.index)||0),duration=Math.max(4,Math.min(10,Number(req.body?.duration)||8));const id=crypto.randomUUID();const job={id,status:'queued',progress:0,createdAt:Date.now(),duration,narration:safeText(req.body?.narration||'',900),prompt:realPrompt(dna,req.body?.variant, duration,idx),warning:null,error:null};aiJobs.set(id,job);aiQueue.push(id);aiPump();res.status(202).json({ok:true,id,status:'queued'});});
+app.get('/ai-real/jobs/:id',(req,res)=>{const j=aiJobs.get(String(req.params.id));if(!j)return res.status(404).json({error:'Job IA não encontrado'});res.json({ok:true,id:j.id,status:j.status,progress:j.progress,error:j.error||null,warning:j.warning||null,size:j.size||0})});
+app.get('/ai-real/jobs/:id/file',(req,res)=>{const j=aiJobs.get(String(req.params.id)),p=outPath(String(req.params.id));if(!j||j.status!=='ready'||!fs.existsSync(p))return res.status(404).json({error:'Vídeo IA ainda não está pronto'});const disposition=String(req.query.download||'')==='1'?'attachment':'inline';res.set({'Cache-Control':'no-store','Content-Type':'video/mp4','Content-Disposition':`${disposition}; filename="viral-studio-ia-${j.id}.mp4"`,'Access-Control-Allow-Origin':'*'});fs.createReadStream(p).pipe(res)});
+// ===== FIM V9.0 IA REAL =====
 
 app.post('/jobs',(req,res)=>{
   const signature=String(req.body?.signature||'').slice(0,180);
@@ -505,7 +605,11 @@ app.get('/jobs/:id/file',(req,res)=>{
   res.writeHead(200,{...common,'Content-Length':size}); fs.createReadStream(p).pipe(res);
 });
 
+
+app.get('/queue/state',(_req,res)=>res.json({ok:true,active,queued:queue.length,items:queue.slice(0,20)}));
+app.post('/queue/kick',(_req,res)=>{pump();res.json({ok:true,active,queued:queue.length})});
+
 cleanupStorage(true);
 setInterval(()=>{const cutoff=Date.now()-90*60*1000;for(const [id,j] of jobs){if((j.finishedAt||j.createdAt)<cutoff&&['ready','error'].includes(j.status)){jobs.delete(id);cleanFile(outPath(id))}}cleanupStorage(false)},10*60*1000).unref?.();
-const server=app.listen(Number(process.env.PORT)||10000,'0.0.0.0',()=>console.log(`Viral Studio Cloud Render V8.3 pronto na porta 10000 — Multiplicador de Criativos — fila até 100 — ${MAX_CONCURRENCY} renderizações paralelas`));
+const server=app.listen(Number(process.env.PORT)||10000,'0.0.0.0',()=>console.log(`Viral Studio Cloud IA Real V9.0 pronto na porta 10000 — Multiplicador de Criativos — fila até 100 — ${MAX_CONCURRENCY} renderizações paralelas`));
 server.requestTimeout=30*60*1000;server.headersTimeout=31*60*1000;server.keepAliveTimeout=65000;
