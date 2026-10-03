@@ -66,8 +66,8 @@ function runOut(bin,args,timeoutMs=120000){return new Promise((ok,no)=>{const p=
 function runInput(bin,args,input){return new Promise((ok,no)=>{const p=spawn(bin,args,{stdio:['pipe','pipe','pipe'],windowsHide:true});let out='',err='';p.stdout.on('data',d=>out+=d);p.stderr.on('data',d=>err+=d);p.on('error',no);p.on('close',c=>c===0?ok(out.trim()):no(new Error(err||out||bin+' '+c)));p.stdin.end(input)})}
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
 
-app.get('/',(_q,r)=>r.json({ok:true,service:'Viral Studio Motor Cloud',version:'9.3',maxBatch:20,concurrency:MAX_CONCURRENCY,mode:'cloud-render'}));
-app.get('/health',(_q,r)=>r.json({ok:true,service:'Viral Studio Motor Cloud',engine:'cloud',version:'9.3',mode:'cloud-render',maxBatch:20,concurrency:MAX_CONCURRENCY,active,queued:queue.length,storage:storageSummary(),capabilities:{linkMp4:true,linkInfo:true,linkAnalyze:true,batchZip:false,autoCleanup:true,mobile720p:true,uploadMp4:true,aiReal:true,newVideoFromReference:true,originalFramesReused:false}}));
+app.get('/',(_q,r)=>r.json({ok:true,service:'Viral Studio Motor Cloud',version:'9.4',maxBatch:20,concurrency:MAX_CONCURRENCY,mode:'cloud-render'}));
+app.get('/health',(_q,r)=>r.json({ok:true,service:'Viral Studio Motor Cloud',engine:'cloud',version:'9.4',mode:'cloud-render',maxBatch:20,concurrency:MAX_CONCURRENCY,active,queued:queue.length,storage:storageSummary(),capabilities:{linkMp4:false,linkInfo:false,linkAnalyze:false,batchZip:false,autoCleanup:true,mobile720p:true,uploadMp4:false,aiReal:true,newVideoFromReference:true,originalFramesReused:false,uploadReferenceOnly:true,rangePlayback:true}}));
 app.get('/storage',(_q,r)=>r.json({ok:true,...storageSummary()}));
 app.post('/storage/cleanup',(_q,r)=>{const freed=
 app.get('/queue/state',(_req,res)=>res.json({ok:true,active,queued:queue.length,items:queue.slice(0,20)}));
@@ -472,7 +472,7 @@ app.post('/ai/analyze',async(req,res)=>{
 // ===== V9.0 — IA REAL: referência entra, vídeo original NÃO é reutilizado =====
 const REAL_AI_KEY_RAW=String(process.env.POLLINATIONS_API_KEY||'').trim();
 const REAL_AI_KEY=REAL_AI_KEY_RAW.replace(/[\u2026\u2018\u2019\u201C\u201D]/g,'').replace(/\s+/g,'');
-const REAL_AI_KEY_VALID=/^sk_[A-Za-z0-9._-]{12,}$/.test(REAL_AI_KEY) && !/\.{3,}/.test(REAL_AI_KEY_RAW) && !REAL_AI_KEY_RAW.includes('…');
+const REAL_AI_KEY_VALID=/^sk_[\x21-\x7e]{8,}$/.test(REAL_AI_KEY) && !/\.{3,}/.test(REAL_AI_KEY_RAW) && !REAL_AI_KEY_RAW.includes('…');
 const REAL_AI_VIDEO_MODEL=String(process.env.POLLINATIONS_VIDEO_MODEL||'minimax/minimax-h3-max-turbo').trim();
 const REAL_AI_VISION_MODEL=String(process.env.POLLINATIONS_VISION_MODEL||'google/gemini-2.5-flash-lite').trim();
 const aiJobs=new Map(), aiQueue=[]; let aiActive=0;
@@ -525,7 +525,7 @@ async function visionDNA(images,product,facts,meta={}){
 async function linkDNA(url,product,facts){
   const original=safeText(url,500); if(!isTikTokUrl(original))throw new Error('Link do TikTok inválido');
   const u=await resolveTikTokUrl(original), endpoint='https://www.tiktok.com/oembed?url='+encodeURIComponent(u);
-  const rr=await fetch(endpoint,{headers:{'User-Agent':'ViralStudioIAReal/9.0'}}); if(!rr.ok)throw new Error('TikTok não retornou a referência pública');
+  const rr=await fetch(endpoint,{headers:{'User-Agent':'ViralStudioIAReal/9.4'}}); if(!rr.ok)throw new Error('TikTok não retornou a referência pública');
   const ref=await rr.json(), thumb=safeText(ref.thumbnail_url||'',1000); let imgs=[];
   if(thumb){try{const ir=await fetch(thumb);if(ir.ok){const b=Buffer.from(await ir.arrayBuffer());imgs=['data:image/jpeg;base64,'+b.toString('base64')]}}catch(_){}}
   return visionDNA(imgs,product,facts,{title:ref.title||'',author_name:ref.author_name||''});
@@ -565,7 +565,7 @@ async function processAIJob(job){
   finally{cleanFile(visual)}
 }
 function aiPump(){while(aiActive<1&&aiQueue.length){const id=aiQueue.shift(),j=aiJobs.get(id);if(!j||j.status!=='queued')continue;aiActive++;processAIJob(j).finally(()=>{aiActive--;aiPump()})}}
-app.get('/ai-real/status',(_q,res)=>res.json({ok:true,version:'9.3',mode:'new-video-from-reference',configured:REAL_AI_KEY_VALID,videoModel:REAL_AI_VIDEO_MODEL,visionModel:REAL_AI_VISION_MODEL,originalFramesReused:false,audio:'new-tts',mobileReferenceFrames:true}));
+app.get('/ai-real/status',(_q,res)=>res.json({ok:true,version:'9.4',mode:'upload-reference-only',configured:REAL_AI_KEY_VALID,message:REAL_AI_KEY_VALID?'IA Real pronta':'POLLINATIONS_API_KEY ausente, inválida ou com texto de exemplo',videoModel:REAL_AI_VIDEO_MODEL,visionModel:REAL_AI_VISION_MODEL,originalFramesReused:false,audio:'new-tts',mobileReferenceFrames:true,downloadRoute:'/ai-real/jobs/:id/file?download=1'}));
 app.post('/ai-real/analyze',async(req,res)=>{
  try{
   const product=safeText(req.body?.product||'',160),facts=safeText(req.body?.facts||'',600);let dna;
@@ -589,9 +589,22 @@ app.post('/ai-real/analyze-images',async(req,res)=>{
   res.json({ok:true,dna,warning:dna.vision_warning||null,originalFramesReused:false,referenceFramesUsed:images.length});
  }catch(e){const dna=defaultDNA(req.body?.product||'',req.body?.facts||'',{});dna.vision_warning='Fallback automático ativado.';res.json({ok:true,dna,warning:safeText(e.message||e,300),originalFramesReused:false,referenceFramesUsed:0})}
 });
-app.post('/ai-real/jobs',(req,res)=>{const dna=req.body?.dna||{};const idx=Math.max(0,Number(req.body?.index)||0),duration=Math.max(4,Math.min(10,Number(req.body?.duration)||8));const id=crypto.randomUUID();const job={id,status:'queued',progress:0,createdAt:Date.now(),duration,narration:safeText(req.body?.narration||'',900),prompt:realPrompt(dna,req.body?.variant, duration,idx),warning:null,error:null};aiJobs.set(id,job);aiQueue.push(id);aiPump();res.status(202).json({ok:true,id,status:'queued'});});
+app.post('/ai-real/jobs',(req,res)=>{if(!REAL_AI_KEY_VALID)return res.status(503).json({error:'IA Real não configurada. Confira POLLINATIONS_API_KEY no Render.'});const dna=req.body?.dna||{};const idx=Math.max(0,Number(req.body?.index)||0),duration=Math.max(4,Math.min(10,Number(req.body?.duration)||8));const id=crypto.randomUUID();const job={id,status:'queued',progress:0,createdAt:Date.now(),duration,narration:safeText(req.body?.narration||'',900),voice:safeText(req.body?.voice||'natural',40),prompt:realPrompt(dna,req.body?.variant, duration,idx),warning:null,error:null};aiJobs.set(id,job);aiQueue.push(id);aiPump();res.status(202).json({ok:true,id,status:'queued'});});
 app.get('/ai-real/jobs/:id',(req,res)=>{const j=aiJobs.get(String(req.params.id));if(!j)return res.status(404).json({error:'Job IA não encontrado'});res.json({ok:true,id:j.id,status:j.status,progress:j.progress,error:j.error||null,warning:j.warning||null,size:j.size||0})});
-app.get('/ai-real/jobs/:id/file',(req,res)=>{const j=aiJobs.get(String(req.params.id)),p=outPath(String(req.params.id));if(!j||j.status!=='ready'||!fs.existsSync(p))return res.status(404).json({error:'Vídeo IA ainda não está pronto'});const disposition=String(req.query.download||'')==='1'?'attachment':'inline';res.set({'Cache-Control':'no-store','Content-Type':'video/mp4','Content-Disposition':`${disposition}; filename="viral-studio-ia-${j.id}.mp4"`,'Access-Control-Allow-Origin':'*'});fs.createReadStream(p).pipe(res)});
+app.get('/ai-real/jobs/:id/file',(req,res)=>{
+  const j=aiJobs.get(String(req.params.id)),p=outPath(String(req.params.id));
+  if(!j||j.status!=='ready'||!fs.existsSync(p))return res.status(404).json({error:'Vídeo IA ainda não está pronto'});
+  const size=fs.statSync(p).size, download=String(req.query.download||'')==='1';
+  const baseHeaders={'Cache-Control':'no-store','Content-Type':'video/mp4','Accept-Ranges':'bytes','Access-Control-Allow-Origin':'*','Content-Disposition':`${download?'attachment':'inline'}; filename="viral-studio-ia-${j.id}.mp4"`};
+  const range=req.headers.range;
+  if(range&&!download){
+    const m=/bytes=(\d*)-(\d*)/.exec(range); let start=m&&m[1]?Number(m[1]):0,end=m&&m[2]?Number(m[2]):size-1;
+    if(!Number.isFinite(start)||!Number.isFinite(end)||start>end||start>=size)return res.status(416).set('Content-Range',`bytes */${size}`).end();
+    end=Math.min(end,size-1);res.status(206).set({...baseHeaders,'Content-Range':`bytes ${start}-${end}/${size}`,'Content-Length':String(end-start+1)});return fs.createReadStream(p,{start,end}).pipe(res);
+  }
+  res.status(200).set({...baseHeaders,'Content-Length':String(size)});fs.createReadStream(p).pipe(res);
+});
+app.get('/ai-real/download/:id',(req,res)=>{req.query.download='1';const id=String(req.params.id);const j=aiJobs.get(id),p=outPath(id);if(!j||j.status!=='ready'||!fs.existsSync(p))return res.status(404).json({error:'Vídeo IA ainda não está pronto'});return res.download(p,`viral-studio-ia-${id}.mp4`);});
 // ===== FIM V9.0 IA REAL =====
 
 app.post('/jobs',(req,res)=>{
