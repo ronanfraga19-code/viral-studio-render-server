@@ -1,5 +1,5 @@
-Viral Studio Motor Cloud V8.3 — Mobile Fix
+Viral Studio Motor Cloud V8.4 — Finalização Fix
 
-Substitua os arquivos do repositório GitHub por estes arquivos. O Render fará Auto Deploy.
-Depois teste /health e confirme version 8.3, mode cloud-render, concurrency 1.
-A V8.3 prioriza renderização leve para Render Free e celular, reduzindo quedas de conexão durante Link do TikTok.
+Corrige ciclo 100% -> erro -> fila. Se a voz neural falhar no fechamento, preserva o vídeo visual pronto em vez de descartar toda a renderização. Também valida o MP4 com ffprobe antes de marcar 100%.
+
+Substitua os arquivos no GitHub e aguarde o Auto Deploy. Confirme /health com version 8.4.

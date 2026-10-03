@@ -62,8 +62,8 @@ function runOut(bin,args){return new Promise((ok,no)=>{const p=spawn(bin,args,{s
 function runInput(bin,args,input){return new Promise((ok,no)=>{const p=spawn(bin,args,{stdio:['pipe','pipe','pipe'],windowsHide:true});let out='',err='';p.stdout.on('data',d=>out+=d);p.stderr.on('data',d=>err+=d);p.on('error',no);p.on('close',c=>c===0?ok(out.trim()):no(new Error(err||out||bin+' '+c)));p.stdin.end(input)})}
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
 
-app.get('/',(_q,r)=>r.json({ok:true,service:'Viral Studio Motor Cloud',version:'8.3',maxBatch:20,concurrency:MAX_CONCURRENCY,mode:'cloud-render'}));
-app.get('/health',(_q,r)=>r.json({ok:true,service:'Viral Studio Motor Cloud',engine:'cloud',version:'8.3',mode:'cloud-render',maxBatch:20,concurrency:MAX_CONCURRENCY,active,queued:queue.length,storage:storageSummary(),capabilities:{linkMp4:true,linkInfo:true,linkAnalyze:true,batchZip:false,autoCleanup:true,mobile720p:true,uploadMp4:true}}));
+app.get('/',(_q,r)=>r.json({ok:true,service:'Viral Studio Motor Cloud',version:'8.4',maxBatch:20,concurrency:MAX_CONCURRENCY,mode:'cloud-render'}));
+app.get('/health',(_q,r)=>r.json({ok:true,service:'Viral Studio Motor Cloud',engine:'cloud',version:'8.4',mode:'cloud-render',maxBatch:20,concurrency:MAX_CONCURRENCY,active,queued:queue.length,storage:storageSummary(),capabilities:{linkMp4:true,linkInfo:true,linkAnalyze:true,batchZip:false,autoCleanup:true,mobile720p:true,uploadMp4:true}}));
 app.get('/storage',(_q,r)=>r.json({ok:true,...storageSummary()}));
 app.post('/storage/cleanup',(_q,r)=>{const freed=cleanupStorage(true);r.json({ok:true,freedMB:Math.round(freed/1024/1024),...storageSummary()})});
 function isTikTokUrl(v){
@@ -158,7 +158,7 @@ app.post('/tiktok/link-analyze',async(req,res)=>{
     if(!isTikTokUrl(original))return res.status(400).json({error:'Link do TikTok inválido'});
     const u=await resolveTikTokUrl(original);
     const endpoint='https://www.tiktok.com/oembed?url='+encodeURIComponent(u);
-    const rr=await fetch(endpoint,{headers:{'User-Agent':'Mozilla/5.0 ViralStudioCloud/8.3'}});
+    const rr=await fetch(endpoint,{headers:{'User-Agent':'Mozilla/5.0 ViralStudioCloud/8.4'}});
     if(!rr.ok)return res.status(502).json({error:'TikTok não retornou os dados públicos desse vídeo'});
     const ref=await rr.json();
     const product=String(req.body?.product||'').trim().slice(0,160);
@@ -390,13 +390,34 @@ async function processJob(job){
       await run(['-y','-hide_banner','-loglevel','error','-i',visual,'-i',src,'-map','0:v:0','-map','1:a:0?','-c:v','copy','-c:a','aac','-b:a','160k','-t',dur.toFixed(3),'-movflags','+faststart',narrated]);
       cleanFile(visual);
     } else await processRemix(job,narrated);
-    if(job.narration){job.progress=92;await addNarration(narrated,out,job.narration,job.duration);cleanFile(narrated)}
+    if(job.narration){
+      job.progress=92;
+      try{
+        await addNarration(narrated,out,job.narration,job.duration);
+        cleanFile(narrated);
+      }catch(narrErr){
+        // O visual já está pronto. Se a voz falhar no fechamento, não jogamos o vídeo inteiro fora.
+        // Publicamos o visual compatível como fallback e registramos um aviso para diagnóstico.
+        if(fs.existsSync(narrated) && fs.statSync(narrated).size>1024){
+          cleanFile(out);
+          fs.renameSync(narrated,out);
+          job.warning='A voz neural falhou no fechamento; vídeo concluído com o áudio-base disponível.';
+        }else throw narrErr;
+      }
+    }
     if(!fs.existsSync(out)||fs.statSync(out).size<1024)throw new Error('Arquivo final vazio.');
+    // Confirma que o arquivo final é realmente legível antes de marcar 100%.
+    try{await runOut('ffprobe',['-v','error','-show_entries','format=duration','-of','default=noprint_wrappers=1:nokey=1',out]);}
+    catch(e){
+      const repaired=path.join(TMP,'repair-'+job.id+'.mp4'); cleanFile(repaired);
+      await run(['-y','-hide_banner','-loglevel','error','-i',out,'-map','0:v:0?','-map','0:a:0?','-c','copy','-movflags','+faststart',repaired]);
+      cleanFile(out); fs.renameSync(repaired,out);
+    }
     job.status='ready';job.progress=100;job.finishedAt=Date.now();job.size=fs.statSync(out).size;
   }catch(e){
     let msg=String(e.message||e);
     if(/No space left on device|code:\s*-28|Error writing trailer/i.test(msg)){cleanupStorage(true);const s=storageSummary();msg=`Espaço insuficiente no Motor durante a renderização. Limpeza automática executada. Espaço livre agora: ${s.freeMB==null?'desconhecido':s.freeMB+' MB'}. Libere espaço ou reduza o lote.`}
-    job.status='error';job.progress=100;job.error=msg.slice(-900);job.finishedAt=Date.now()
+    job.status='error';job.progress=Math.min(99,Math.max(1,Number(job.progress||1)));job.error=msg.slice(-900);job.finishedAt=Date.now()
   }finally{
     for(const p of [path.join(TMP,'visual-'+job.id+'.mp4'),path.join(TMP,'mult-'+job.id+'.mp4'),path.join(TMP,'base-'+job.id+'.mp4')])cleanFile(p);
     cleanDirOlderThan(TMP,20*60*1000);
@@ -437,7 +458,7 @@ app.post('/ai/analyze',async(req,res)=>{
 
 app.post('/jobs',(req,res)=>{
   const signature=String(req.body?.signature||'').slice(0,180);
-  if(signature&&signatures.has(signature)){const old=jobs.get(signatures.get(signature));if(old)return res.status(200).json({ok:true,id:old.id,status:old.status,deduplicated:true});signatures.delete(signature)}
+  if(signature&&signatures.has(signature)){const old=jobs.get(signatures.get(signature));if(old&&old.status!=='error')return res.status(200).json({ok:true,id:old.id,status:old.status,deduplicated:true});signatures.delete(signature)}
   const clips=(req.body&&req.body.clips)||[];
   if(!Array.isArray(clips)||clips.length!==3)return res.status(400).json({error:'Envie 3 IDs de clips.'});
   const ids=clips.map(safeId); if(ids.some(x=>!x))return res.status(400).json({error:'ID de clip inválido.'});
@@ -458,8 +479,8 @@ app.post('/jobs/:id/retry',(req,res)=>{
   jobs.set(id,job); queue.push(id); pump();
   res.status(202).json({ok:true,id,status:'queued',retryOf:old.id});
 });
-app.post('/jobs/status',(req,res)=>{const ids=Array.isArray(req.body?.ids)?req.body.ids.slice(0,100):[];res.json({ok:true,jobs:ids.map(id=>{const j=jobs.get(String(id));return j?{id:j.id,status:j.status,progress:j.progress,preset:j.preset,mode:j.mode,error:j.error||null,size:j.size||0}: {id:String(id),status:'missing',progress:100,error:'Job não encontrado'}})})});
-app.get('/jobs/:id',(req,res)=>{const j=jobs.get(String(req.params.id));if(!j)return res.status(404).json({error:'Job não encontrado'});res.json({ok:true,id:j.id,status:j.status,progress:j.progress,error:j.error||null,size:j.size||0})});
+app.post('/jobs/status',(req,res)=>{const ids=Array.isArray(req.body?.ids)?req.body.ids.slice(0,100):[];res.json({ok:true,jobs:ids.map(id=>{const j=jobs.get(String(id));return j?{id:j.id,status:j.status,progress:j.progress,preset:j.preset,mode:j.mode,error:j.error||null,warning:j.warning||null,size:j.size||0}: {id:String(id),status:'missing',progress:100,error:'Job não encontrado'}})})});
+app.get('/jobs/:id',(req,res)=>{const j=jobs.get(String(req.params.id));if(!j)return res.status(404).json({error:'Job não encontrado'});res.json({ok:true,id:j.id,status:j.status,progress:j.progress,error:j.error||null,warning:j.warning||null,size:j.size||0})});
 app.get('/jobs/:id/file',(req,res)=>{
   const j=jobs.get(String(req.params.id)),p=outPath(String(req.params.id));
   if(!j||j.status!=='ready'||!fs.existsSync(p))return res.status(404).json({error:'Vídeo ainda não está pronto'});
