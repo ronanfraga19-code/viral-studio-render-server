@@ -66,8 +66,8 @@ function runOut(bin,args,timeoutMs=120000){return new Promise((ok,no)=>{const p=
 function runInput(bin,args,input){return new Promise((ok,no)=>{const p=spawn(bin,args,{stdio:['pipe','pipe','pipe'],windowsHide:true});let out='',err='';p.stdout.on('data',d=>out+=d);p.stderr.on('data',d=>err+=d);p.on('error',no);p.on('close',c=>c===0?ok(out.trim()):no(new Error(err||out||bin+' '+c)));p.stdin.end(input)})}
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
 
-app.get('/',(_q,r)=>r.json({ok:true,service:'Viral Studio Motor Cloud',version:'9.4',maxBatch:20,concurrency:MAX_CONCURRENCY,mode:'cloud-render'}));
-app.get('/health',(_q,r)=>r.json({ok:true,service:'Viral Studio Motor Cloud',engine:'cloud',version:'9.4',mode:'cloud-render',maxBatch:20,concurrency:MAX_CONCURRENCY,active,queued:queue.length,storage:storageSummary(),capabilities:{linkMp4:false,linkInfo:false,linkAnalyze:false,batchZip:false,autoCleanup:true,mobile720p:true,uploadMp4:false,aiReal:true,newVideoFromReference:true,originalFramesReused:false,uploadReferenceOnly:true,rangePlayback:true}}));
+app.get('/',(_q,r)=>r.json({ok:true,service:'Viral Studio Motor Cloud',version:'9.5',maxBatch:20,concurrency:MAX_CONCURRENCY,mode:'cloud-render'}));
+app.get('/health',(_q,r)=>r.json({ok:true,service:'Viral Studio Motor Cloud',engine:'cloud',version:'9.5',mode:'cloud-render',maxBatch:20,concurrency:MAX_CONCURRENCY,active,queued:queue.length,storage:storageSummary(),capabilities:{linkMp4:false,linkInfo:false,linkAnalyze:false,batchZip:false,autoCleanup:true,mobile720p:true,uploadMp4:false,aiReal:true,newVideoFromReference:true,originalFramesReused:false,uploadReferenceOnly:true,rangePlayback:true}}));
 app.get('/storage',(_q,r)=>r.json({ok:true,...storageSummary()}));
 app.post('/storage/cleanup',(_q,r)=>{const freed=
 app.get('/queue/state',(_req,res)=>res.json({ok:true,active,queued:queue.length,items:queue.slice(0,20)}));
@@ -472,7 +472,8 @@ app.post('/ai/analyze',async(req,res)=>{
 // ===== V9.0 — IA REAL: referência entra, vídeo original NÃO é reutilizado =====
 const REAL_AI_KEY_RAW=String(process.env.POLLINATIONS_API_KEY||'').trim();
 const REAL_AI_KEY=REAL_AI_KEY_RAW.replace(/[\u2026\u2018\u2019\u201C\u201D]/g,'').replace(/\s+/g,'');
-const REAL_AI_KEY_VALID=/^sk_[\x21-\x7e]{8,}$/.test(REAL_AI_KEY) && !/\.{3,}/.test(REAL_AI_KEY_RAW) && !REAL_AI_KEY_RAW.includes('…');
+const REAL_AI_KEY_TYPE=REAL_AI_KEY.startsWith('sk_')?'secret':REAL_AI_KEY.startsWith('pk_')?'publishable':REAL_AI_KEY?'unknown':'missing';
+const REAL_AI_KEY_VALID=REAL_AI_KEY_TYPE==='secret' && /^sk_[\x21-\x7e]{8,}$/.test(REAL_AI_KEY) && !/\.{3,}/.test(REAL_AI_KEY_RAW) && !REAL_AI_KEY_RAW.includes('…');
 const REAL_AI_VIDEO_MODEL=String(process.env.POLLINATIONS_VIDEO_MODEL||'minimax/minimax-h3-max-turbo').trim();
 const REAL_AI_VISION_MODEL=String(process.env.POLLINATIONS_VISION_MODEL||'google/gemini-2.5-flash-lite').trim();
 const aiJobs=new Map(), aiQueue=[]; let aiActive=0;
@@ -565,7 +566,10 @@ async function processAIJob(job){
   finally{cleanFile(visual)}
 }
 function aiPump(){while(aiActive<1&&aiQueue.length){const id=aiQueue.shift(),j=aiJobs.get(id);if(!j||j.status!=='queued')continue;aiActive++;processAIJob(j).finally(()=>{aiActive--;aiPump()})}}
-app.get('/ai-real/status',(_q,res)=>res.json({ok:true,version:'9.4',mode:'upload-reference-only',configured:REAL_AI_KEY_VALID,message:REAL_AI_KEY_VALID?'IA Real pronta':'POLLINATIONS_API_KEY ausente, inválida ou com texto de exemplo',videoModel:REAL_AI_VIDEO_MODEL,visionModel:REAL_AI_VISION_MODEL,originalFramesReused:false,audio:'new-tts',mobileReferenceFrames:true,downloadRoute:'/ai-real/jobs/:id/file?download=1'}));
+app.get('/ai-real/status',(_q,res)=>{
+  const message=REAL_AI_KEY_VALID?'IA Real pronta':REAL_AI_KEY_TYPE==='publishable'?'A chave configurada é pk_. Para o backend do Render, use uma chave secreta sk_ da Pollinations.':REAL_AI_KEY_TYPE==='missing'?'POLLINATIONS_API_KEY não foi definida no Render.':'POLLINATIONS_API_KEY inválida ou incompleta.';
+  res.json({ok:true,version:'9.5',mode:'upload-reference-only',configured:REAL_AI_KEY_VALID,keyPresent:Boolean(REAL_AI_KEY),keyType:REAL_AI_KEY_TYPE,message,videoModel:REAL_AI_VIDEO_MODEL,visionModel:REAL_AI_VISION_MODEL,originalFramesReused:false,audio:'new-tts',mobileReferenceFrames:true,downloadRoute:'/ai-real/jobs/:id/file?download=1'});
+});
 app.post('/ai-real/analyze',async(req,res)=>{
  try{
   const product=safeText(req.body?.product||'',160),facts=safeText(req.body?.facts||'',600);let dna;
