@@ -62,8 +62,8 @@ function runOut(bin,args){return new Promise((ok,no)=>{const p=spawn(bin,args,{s
 function runInput(bin,args,input){return new Promise((ok,no)=>{const p=spawn(bin,args,{stdio:['pipe','pipe','pipe'],windowsHide:true});let out='',err='';p.stdout.on('data',d=>out+=d);p.stderr.on('data',d=>err+=d);p.on('error',no);p.on('close',c=>c===0?ok(out.trim()):no(new Error(err||out||bin+' '+c)));p.stdin.end(input)})}
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
 
-app.get('/',(_q,r)=>r.json({ok:true,service:'Viral Studio Motor Cloud',version:'8.4',maxBatch:20,concurrency:MAX_CONCURRENCY,mode:'cloud-render'}));
-app.get('/health',(_q,r)=>r.json({ok:true,service:'Viral Studio Motor Cloud',engine:'cloud',version:'8.4',mode:'cloud-render',maxBatch:20,concurrency:MAX_CONCURRENCY,active,queued:queue.length,storage:storageSummary(),capabilities:{linkMp4:true,linkInfo:true,linkAnalyze:true,batchZip:false,autoCleanup:true,mobile720p:true,uploadMp4:true}}));
+app.get('/',(_q,r)=>r.json({ok:true,service:'Viral Studio Motor Cloud',version:'8.5',maxBatch:20,concurrency:MAX_CONCURRENCY,mode:'cloud-render'}));
+app.get('/health',(_q,r)=>r.json({ok:true,service:'Viral Studio Motor Cloud',engine:'cloud',version:'8.5',mode:'cloud-render',maxBatch:20,concurrency:MAX_CONCURRENCY,active,queued:queue.length,storage:storageSummary(),capabilities:{linkMp4:true,linkInfo:true,linkAnalyze:true,batchZip:false,autoCleanup:true,mobile720p:true,uploadMp4:true,dynamicMotion:true,multiVoiceTTS:true,influencerSwap:false}}));
 app.get('/storage',(_q,r)=>r.json({ok:true,...storageSummary()}));
 app.post('/storage/cleanup',(_q,r)=>{const freed=cleanupStorage(true);r.json({ok:true,freedMB:Math.round(freed/1024/1024),...storageSummary()})});
 function isTikTokUrl(v){
@@ -158,7 +158,7 @@ app.post('/tiktok/link-analyze',async(req,res)=>{
     if(!isTikTokUrl(original))return res.status(400).json({error:'Link do TikTok inválido'});
     const u=await resolveTikTokUrl(original);
     const endpoint='https://www.tiktok.com/oembed?url='+encodeURIComponent(u);
-    const rr=await fetch(endpoint,{headers:{'User-Agent':'Mozilla/5.0 ViralStudioCloud/8.4'}});
+    const rr=await fetch(endpoint,{headers:{'User-Agent':'Mozilla/5.0 ViralStudioCloud/8.5'}});
     if(!rr.ok)return res.status(502).json({error:'TikTok não retornou os dados públicos desse vídeo'});
     const ref=await rr.json();
     const product=String(req.body?.product||'').trim().slice(0,160);
@@ -309,12 +309,20 @@ function buildStrategy(preset,durs,intensity,goal,duration){
   if(goal==='retencao') base=[base[0],base[2],base[1],...base.slice(3)];
   return base.map(seg=>{const clipDur=durs[seg.i]||6;const start=Math.max(0,Math.min(Math.max(clipDur-.6,0),clipDur*seg.startFrac));const maxDur=Math.max(.65,clipDur-start-.05);return {clipIndex:seg.i,start,dur:Math.min(seg.reqDur,maxDur),speed:seg.speed,zoom:seg.zoom};});
 }
-async function makeSnippet(input,start,dur,speed,zoom=1){
+async function makeSnippet(input,start,dur,speed,zoom=1,variant=0){
   const out=path.join(TMP,'snippet-'+crypto.randomUUID()+'.mp4');
   const pts=(1/Math.max(speed||1,0.5)).toFixed(4)+'*PTS';
   const atempo=Math.min(2,Math.max(0.5,speed||1)).toFixed(4);
-  const z=Math.max(1,Math.min(1.18,Number(zoom)||1)); const sw=Math.round(720*z), sh=Math.round(1280*z);
-  const vf=`scale=${sw}:${sh}:force_original_aspect_ratio=increase,crop=720:1280:(iw-720)/2:(ih-1280)/2,setsar=1,fps=30,setpts=${pts}`;
+  const z=Math.max(1.03,Math.min(1.22,Number(zoom)||1.06));
+  const sw=Math.round(720*z), sh=Math.round(1280*z);
+  const motions=[
+    {x:'(iw-720)/2+18*sin(n/16)',y:'(ih-1280)/2'},
+    {x:'(iw-720)/2',y:'(ih-1280)/2+22*sin(n/18)'},
+    {x:'(iw-720)/2+14*sin(n/14)',y:'(ih-1280)/2+10*cos(n/17)'},
+    {x:'(iw-720)/2-16*sin(n/20)',y:'(ih-1280)/2+8*sin(n/13)'}
+  ];
+  const m=motions[Math.abs(Number(variant)||0)%motions.length];
+  const vf=`scale=${sw}:${sh}:force_original_aspect_ratio=increase,crop=720:1280:${m.x}:${m.y},setsar=1,fps=30,setpts=${pts}`;
   await run(['-y','-hide_banner','-loglevel','error','-ss',String(Math.max(0,start||0)),'-t',String(Math.max(0.6,dur||1.2)),'-i',input,'-map','0:v:0?','-map','0:a:0?','-vf',vf,'-af',`atempo=${atempo}`,'-c:v','libx264','-preset','ultrafast','-crf','25','-pix_fmt','yuv420p','-c:a','aac','-b:a','128k','-ar','44100','-ac','2','-movflags','+faststart',out]);
   return out;
 }
@@ -341,7 +349,7 @@ async function processRemix(job,out){
   const parts=[];
   try{
     let idx=0;
-    for(const seg of plan){ idx++; job.progress=35+Math.round((idx/plan.length)*35); parts.push(await makeSnippet(inputs[seg.clipIndex],seg.start,seg.dur,seg.speed,seg.zoom)); }
+    for(const seg of plan){ idx++; job.progress=35+Math.round((idx/plan.length)*35); parts.push(await makeSnippet(inputs[seg.clipIndex],seg.start,seg.dur,seg.speed,seg.zoom,idx)); }
     const base=path.join(TMP,'base-'+job.id+'.mp4'); cleanFile(base);
     await concatCopy(parts,base);
     job.progress=82; await applyPreset(base,out,job.preset);
