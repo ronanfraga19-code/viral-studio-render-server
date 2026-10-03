@@ -66,8 +66,8 @@ function runOut(bin,args,timeoutMs=120000){return new Promise((ok,no)=>{const p=
 function runInput(bin,args,input){return new Promise((ok,no)=>{const p=spawn(bin,args,{stdio:['pipe','pipe','pipe'],windowsHide:true});let out='',err='';p.stdout.on('data',d=>out+=d);p.stderr.on('data',d=>err+=d);p.on('error',no);p.on('close',c=>c===0?ok(out.trim()):no(new Error(err||out||bin+' '+c)));p.stdin.end(input)})}
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
 
-app.get('/',(_q,r)=>r.json({ok:true,service:'Viral Studio Motor Cloud',version:'9.1',maxBatch:20,concurrency:MAX_CONCURRENCY,mode:'cloud-render'}));
-app.get('/health',(_q,r)=>r.json({ok:true,service:'Viral Studio Motor Cloud',engine:'cloud',version:'9.1',mode:'cloud-render',maxBatch:20,concurrency:MAX_CONCURRENCY,active,queued:queue.length,storage:storageSummary(),capabilities:{linkMp4:true,linkInfo:true,linkAnalyze:true,batchZip:false,autoCleanup:true,mobile720p:true,uploadMp4:true,aiReal:true,newVideoFromReference:true,originalFramesReused:false}}));
+app.get('/',(_q,r)=>r.json({ok:true,service:'Viral Studio Motor Cloud',version:'9.2',maxBatch:20,concurrency:MAX_CONCURRENCY,mode:'cloud-render'}));
+app.get('/health',(_q,r)=>r.json({ok:true,service:'Viral Studio Motor Cloud',engine:'cloud',version:'9.2',mode:'cloud-render',maxBatch:20,concurrency:MAX_CONCURRENCY,active,queued:queue.length,storage:storageSummary(),capabilities:{linkMp4:true,linkInfo:true,linkAnalyze:true,batchZip:false,autoCleanup:true,mobile720p:true,uploadMp4:true,aiReal:true,newVideoFromReference:true,originalFramesReused:false}}));
 app.get('/storage',(_q,r)=>r.json({ok:true,...storageSummary()}));
 app.post('/storage/cleanup',(_q,r)=>{const freed=
 app.get('/queue/state',(_req,res)=>res.json({ok:true,active,queued:queue.length,items:queue.slice(0,20)}));
@@ -470,7 +470,9 @@ app.post('/ai/analyze',async(req,res)=>{
 
 
 // ===== V9.0 — IA REAL: referência entra, vídeo original NÃO é reutilizado =====
-const REAL_AI_KEY=String(process.env.POLLINATIONS_API_KEY||'').trim();
+const REAL_AI_KEY_RAW=String(process.env.POLLINATIONS_API_KEY||'').trim();
+const REAL_AI_KEY=REAL_AI_KEY_RAW.replace(/[\u2026\u2018\u2019\u201C\u201D]/g,'').replace(/\s+/g,'');
+const REAL_AI_KEY_VALID=/^sk_[A-Za-z0-9._-]{12,}$/.test(REAL_AI_KEY) && !/\.{3,}/.test(REAL_AI_KEY_RAW) && !REAL_AI_KEY_RAW.includes('…');
 const REAL_AI_VIDEO_MODEL=String(process.env.POLLINATIONS_VIDEO_MODEL||'minimax/minimax-h3-max-turbo').trim();
 const REAL_AI_VISION_MODEL=String(process.env.POLLINATIONS_VISION_MODEL||'google/gemini-2.5-flash-lite').trim();
 const aiJobs=new Map(), aiQueue=[]; let aiActive=0;
@@ -506,7 +508,7 @@ async function extractIdeaFrames(asset){
   return frames;
 }
 async function visionDNA(images,product,facts,meta={}){
-  if(!REAL_AI_KEY)return defaultDNA(product,facts,meta);
+  if(!REAL_AI_KEY_VALID)return defaultDNA(product,facts,{...meta,key_warning:'Chave de IA ausente ou inválida'});
   const prompt=`Analise estas imagens de um vídeo de referência para TikTok Shop. NÃO identifique a pessoa e NÃO copie a identidade dela. O vídeo original servirá apenas como inspiração. Descreva o produto visível, a ideia criativa, cenário, movimentos, enquadramentos e ângulo de venda. O novo vídeo deve usar uma influencer adulta claramente diferente, sem copiar rosto/corpo/identidade, e deve manter apenas as características visuais observáveis do produto. Remova da ideia qualquer texto, legenda, marca d'água, interface ou logo do vídeo original. Produto informado: ${safeText(product||'não informado',160)}. Fatos confirmados: ${safeText(facts||'nenhum',500)}. Responda SOMENTE JSON com: product, product_visual, idea, selling_angle, movement, scene, voice_style, variants (array com 5 ideias curtas).`;
   const body={model:REAL_AI_VISION_MODEL,response_format:{type:'json_object'},messages:[{role:'user',content:[{type:'text',text:prompt},...images.map(u=>({type:'image_url',image_url:{url:u}}))]}]};
   try{
@@ -534,7 +536,7 @@ function realPrompt(dna,variant,duration,index){
   return `Vertical 9:16 realistic UGC TikTok Shop video, ${Math.max(4,Math.min(10,Number(duration)||8))} seconds. Create a COMPLETELY NEW video from scratch. Adult Brazilian female influencer with a clearly different appearance from any reference person; do not imitate, recreate, face-match or clone any real person. Product: ${safeText(dna.product,180)}. Preserve only these observable product characteristics: ${safeText(dna.product_visual,420)}. Creative idea: ${safeText(dna.idea,260)}. Selling angle: ${safeText(dna.selling_angle,260)}. Action and movement: ${safeText(dna.movement,360)}. Scene variation: ${scene}. Dynamic natural body movement: walk, turn, use hands, show product close to camera, then full-body or wider view; camera tracks naturally with multiple framings. Do not make a static photo animation and do not use repetitive zoom in/zoom out as the main motion. No on-screen text, no captions, no subtitles, no watermarks, no TikTok UI, no usernames, no logos copied from the reference. Clean realistic lighting, believable hands and product interaction, mobile phone UGC look, high detail. Do not copy any original video frame.`;
 }
 async function generateRealVideo(prompt,duration,dest){
-  if(!REAL_AI_KEY)throw new Error('IA Real ainda não tem créditos/chave configurados no servidor.');
+  if(!REAL_AI_KEY_VALID)throw new Error('Chave da IA Real inválida. No Render, use a chave real completa em POLLINATIONS_API_KEY; não use sk_..., sk_… ou texto de exemplo.');
   const d=Math.max(4,Math.min(10,Number(duration)||8));
   const url='https://gen.pollinations.ai/video/'+encodeURIComponent(prompt)+'?model='+encodeURIComponent(REAL_AI_VIDEO_MODEL)+'&duration='+encodeURIComponent(d);
   const c=new AbortController(), timer=setTimeout(()=>c.abort(),12*60*1000);
@@ -563,7 +565,7 @@ async function processAIJob(job){
   finally{cleanFile(visual)}
 }
 function aiPump(){while(aiActive<1&&aiQueue.length){const id=aiQueue.shift(),j=aiJobs.get(id);if(!j||j.status!=='queued')continue;aiActive++;processAIJob(j).finally(()=>{aiActive--;aiPump()})}}
-app.get('/ai-real/status',(_q,res)=>res.json({ok:true,version:'9.1',mode:'new-video-from-reference',configured:!!REAL_AI_KEY,videoModel:REAL_AI_VIDEO_MODEL,visionModel:REAL_AI_VISION_MODEL,originalFramesReused:false,audio:'new-tts'}));
+app.get('/ai-real/status',(_q,res)=>res.json({ok:true,version:'9.2',mode:'new-video-from-reference',configured:REAL_AI_KEY_VALID,videoModel:REAL_AI_VIDEO_MODEL,visionModel:REAL_AI_VISION_MODEL,originalFramesReused:false,audio:'new-tts'}));
 app.post('/ai-real/analyze',async(req,res)=>{
  try{
   const product=safeText(req.body?.product||'',160),facts=safeText(req.body?.facts||'',600);let dna;
@@ -629,5 +631,5 @@ app.post('/queue/kick',(_req,res)=>{pump();res.json({ok:true,active,queued:queue
 
 cleanupStorage(true);
 setInterval(()=>{const cutoff=Date.now()-90*60*1000;for(const [id,j] of jobs){if((j.finishedAt||j.createdAt)<cutoff&&['ready','error'].includes(j.status)){jobs.delete(id);cleanFile(outPath(id))}}cleanupStorage(false)},10*60*1000).unref?.();
-const server=app.listen(Number(process.env.PORT)||10000,'0.0.0.0',()=>console.log(`Viral Studio Cloud IA Real V9.1 pronto na porta 10000 — Multiplicador de Criativos — fila até 100 — ${MAX_CONCURRENCY} renderizações paralelas`));
+const server=app.listen(Number(process.env.PORT)||10000,'0.0.0.0',()=>console.log(`Viral Studio Cloud IA Real V9.2 pronto na porta 10000 — Multiplicador de Criativos — fila até 100 — ${MAX_CONCURRENCY} renderizações paralelas`));
 server.requestTimeout=30*60*1000;server.headersTimeout=31*60*1000;server.keepAliveTimeout=65000;
