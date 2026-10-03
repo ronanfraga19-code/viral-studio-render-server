@@ -66,8 +66,8 @@ function runOut(bin,args,timeoutMs=120000){return new Promise((ok,no)=>{const p=
 function runInput(bin,args,input){return new Promise((ok,no)=>{const p=spawn(bin,args,{stdio:['pipe','pipe','pipe'],windowsHide:true});let out='',err='';p.stdout.on('data',d=>out+=d);p.stderr.on('data',d=>err+=d);p.on('error',no);p.on('close',c=>c===0?ok(out.trim()):no(new Error(err||out||bin+' '+c)));p.stdin.end(input)})}
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
 
-app.get('/',(_q,r)=>r.json({ok:true,service:'Viral Studio Motor Cloud',version:'9.0',maxBatch:20,concurrency:MAX_CONCURRENCY,mode:'cloud-render'}));
-app.get('/health',(_q,r)=>r.json({ok:true,service:'Viral Studio Motor Cloud',engine:'cloud',version:'9.0',mode:'cloud-render',maxBatch:20,concurrency:MAX_CONCURRENCY,active,queued:queue.length,storage:storageSummary(),capabilities:{linkMp4:true,linkInfo:true,linkAnalyze:true,batchZip:false,autoCleanup:true,mobile720p:true,uploadMp4:true,aiReal:true,newVideoFromReference:true,originalFramesReused:false}}));
+app.get('/',(_q,r)=>r.json({ok:true,service:'Viral Studio Motor Cloud',version:'9.1',maxBatch:20,concurrency:MAX_CONCURRENCY,mode:'cloud-render'}));
+app.get('/health',(_q,r)=>r.json({ok:true,service:'Viral Studio Motor Cloud',engine:'cloud',version:'9.1',mode:'cloud-render',maxBatch:20,concurrency:MAX_CONCURRENCY,active,queued:queue.length,storage:storageSummary(),capabilities:{linkMp4:true,linkInfo:true,linkAnalyze:true,batchZip:false,autoCleanup:true,mobile720p:true,uploadMp4:true,aiReal:true,newVideoFromReference:true,originalFramesReused:false}}));
 app.get('/storage',(_q,r)=>r.json({ok:true,...storageSummary()}));
 app.post('/storage/cleanup',(_q,r)=>{const freed=
 app.get('/queue/state',(_req,res)=>res.json({ok:true,active,queued:queue.length,items:queue.slice(0,20)}));
@@ -509,10 +509,16 @@ async function visionDNA(images,product,facts,meta={}){
   if(!REAL_AI_KEY)return defaultDNA(product,facts,meta);
   const prompt=`Analise estas imagens de um vídeo de referência para TikTok Shop. NÃO identifique a pessoa e NÃO copie a identidade dela. O vídeo original servirá apenas como inspiração. Descreva o produto visível, a ideia criativa, cenário, movimentos, enquadramentos e ângulo de venda. O novo vídeo deve usar uma influencer adulta claramente diferente, sem copiar rosto/corpo/identidade, e deve manter apenas as características visuais observáveis do produto. Remova da ideia qualquer texto, legenda, marca d'água, interface ou logo do vídeo original. Produto informado: ${safeText(product||'não informado',160)}. Fatos confirmados: ${safeText(facts||'nenhum',500)}. Responda SOMENTE JSON com: product, product_visual, idea, selling_angle, movement, scene, voice_style, variants (array com 5 ideias curtas).`;
   const body={model:REAL_AI_VISION_MODEL,response_format:{type:'json_object'},messages:[{role:'user',content:[{type:'text',text:prompt},...images.map(u=>({type:'image_url',image_url:{url:u}}))]}]};
-  const r=await fetch('https://gen.pollinations.ai/v1/chat/completions',{method:'POST',headers:{'Authorization':'Bearer '+REAL_AI_KEY,'Content-Type':'application/json'},body:JSON.stringify(body)});
-  if(!r.ok)throw new Error('Falha na análise visual IA: HTTP '+r.status+' '+safeText(await r.text(),300));
-  const j=await r.json(); const content=j?.choices?.[0]?.message?.content||'';
-  try{const x=JSON.parse(stripJsonFence(content));return {...defaultDNA(product,facts,meta),...x,variants:Array.isArray(x.variants)?x.variants.slice(0,5):defaultDNA(product,facts,meta).variants};}catch(_){return defaultDNA(product,facts,meta)}
+  try{
+    const r=await fetch('https://gen.pollinations.ai/v1/chat/completions',{method:'POST',headers:{'Authorization':'Bearer '+REAL_AI_KEY,'Content-Type':'application/json'},body:JSON.stringify(body)});
+    if(!r.ok){
+      const detail=safeText(await r.text(),300);
+      const d=defaultDNA(product,facts,meta); d.vision_warning='Análise visual indisponível; usando DNA automático. HTTP '+r.status+' '+detail; return d;
+    }
+    const j=await r.json(); const content=j?.choices?.[0]?.message?.content||'';
+    try{const x=JSON.parse(stripJsonFence(content));return {...defaultDNA(product,facts,meta),...x,variants:Array.isArray(x.variants)?x.variants.slice(0,5):defaultDNA(product,facts,meta).variants};}
+    catch(_){const d=defaultDNA(product,facts,meta);d.vision_warning='Resposta visual inválida; usando DNA automático.';return d}
+  }catch(e){const d=defaultDNA(product,facts,meta);d.vision_warning='Análise visual falhou; usando DNA automático: '+safeText(e.message||e,220);return d}
 }
 async function linkDNA(url,product,facts){
   const original=safeText(url,500); if(!isTikTokUrl(original))throw new Error('Link do TikTok inválido');
@@ -557,8 +563,20 @@ async function processAIJob(job){
   finally{cleanFile(visual)}
 }
 function aiPump(){while(aiActive<1&&aiQueue.length){const id=aiQueue.shift(),j=aiJobs.get(id);if(!j||j.status!=='queued')continue;aiActive++;processAIJob(j).finally(()=>{aiActive--;aiPump()})}}
-app.get('/ai-real/status',(_q,res)=>res.json({ok:true,version:'9.0',mode:'new-video-from-reference',configured:!!REAL_AI_KEY,videoModel:REAL_AI_VIDEO_MODEL,visionModel:REAL_AI_VISION_MODEL,originalFramesReused:false,audio:'new-tts'}));
-app.post('/ai-real/analyze',async(req,res)=>{try{const product=safeText(req.body?.product||'',160),facts=safeText(req.body?.facts||'',600);let dna;if(req.body?.asset){dna=await visionDNA(await extractIdeaFrames(req.body.asset),product,facts,{})}else if(req.body?.url){dna=await linkDNA(req.body.url,product,facts)}else return res.status(400).json({error:'Envie asset ou url'});res.json({ok:true,dna,originalFramesReused:false});}catch(e){res.status(500).json({error:'Falha ao extrair a ideia do vídeo.',detail:safeText(e.message||e,700)})}});
+app.get('/ai-real/status',(_q,res)=>res.json({ok:true,version:'9.1',mode:'new-video-from-reference',configured:!!REAL_AI_KEY,videoModel:REAL_AI_VIDEO_MODEL,visionModel:REAL_AI_VISION_MODEL,originalFramesReused:false,audio:'new-tts'}));
+app.post('/ai-real/analyze',async(req,res)=>{
+ try{
+  const product=safeText(req.body?.product||'',160),facts=safeText(req.body?.facts||'',600);let dna;
+  if(req.body?.asset){
+    try{dna=await visionDNA(await extractIdeaFrames(req.body.asset),product,facts,{})}
+    catch(e){dna=defaultDNA(product,facts,{});dna.vision_warning='Não foi possível ler os frames da referência; usando DNA automático: '+safeText(e.message||e,220)}
+  }else if(req.body?.url){
+    try{dna=await linkDNA(req.body.url,product,facts)}
+    catch(e){dna=defaultDNA(product,facts,{});dna.vision_warning='Não foi possível analisar o link; usando DNA automático: '+safeText(e.message||e,220)}
+  }else return res.status(400).json({error:'Envie asset ou url'});
+  res.json({ok:true,dna,warning:dna.vision_warning||null,originalFramesReused:false});
+ }catch(e){const dna=defaultDNA(req.body?.product||'',req.body?.facts||'',{});dna.vision_warning='Fallback automático ativado.';res.json({ok:true,dna,warning:safeText(e.message||e,300),originalFramesReused:false})}
+});
 app.post('/ai-real/jobs',(req,res)=>{const dna=req.body?.dna||{};const idx=Math.max(0,Number(req.body?.index)||0),duration=Math.max(4,Math.min(10,Number(req.body?.duration)||8));const id=crypto.randomUUID();const job={id,status:'queued',progress:0,createdAt:Date.now(),duration,narration:safeText(req.body?.narration||'',900),prompt:realPrompt(dna,req.body?.variant, duration,idx),warning:null,error:null};aiJobs.set(id,job);aiQueue.push(id);aiPump();res.status(202).json({ok:true,id,status:'queued'});});
 app.get('/ai-real/jobs/:id',(req,res)=>{const j=aiJobs.get(String(req.params.id));if(!j)return res.status(404).json({error:'Job IA não encontrado'});res.json({ok:true,id:j.id,status:j.status,progress:j.progress,error:j.error||null,warning:j.warning||null,size:j.size||0})});
 app.get('/ai-real/jobs/:id/file',(req,res)=>{const j=aiJobs.get(String(req.params.id)),p=outPath(String(req.params.id));if(!j||j.status!=='ready'||!fs.existsSync(p))return res.status(404).json({error:'Vídeo IA ainda não está pronto'});const disposition=String(req.query.download||'')==='1'?'attachment':'inline';res.set({'Cache-Control':'no-store','Content-Type':'video/mp4','Content-Disposition':`${disposition}; filename="viral-studio-ia-${j.id}.mp4"`,'Access-Control-Allow-Origin':'*'});fs.createReadStream(p).pipe(res)});
@@ -611,5 +629,5 @@ app.post('/queue/kick',(_req,res)=>{pump();res.json({ok:true,active,queued:queue
 
 cleanupStorage(true);
 setInterval(()=>{const cutoff=Date.now()-90*60*1000;for(const [id,j] of jobs){if((j.finishedAt||j.createdAt)<cutoff&&['ready','error'].includes(j.status)){jobs.delete(id);cleanFile(outPath(id))}}cleanupStorage(false)},10*60*1000).unref?.();
-const server=app.listen(Number(process.env.PORT)||10000,'0.0.0.0',()=>console.log(`Viral Studio Cloud IA Real V9.0 pronto na porta 10000 — Multiplicador de Criativos — fila até 100 — ${MAX_CONCURRENCY} renderizações paralelas`));
+const server=app.listen(Number(process.env.PORT)||10000,'0.0.0.0',()=>console.log(`Viral Studio Cloud IA Real V9.1 pronto na porta 10000 — Multiplicador de Criativos — fila até 100 — ${MAX_CONCURRENCY} renderizações paralelas`));
 server.requestTimeout=30*60*1000;server.headersTimeout=31*60*1000;server.keepAliveTimeout=65000;
