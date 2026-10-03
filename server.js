@@ -13,7 +13,7 @@ const jobs=new Map(), queue=[];let active=0;
 const signatures=new Map();
 const CPU_COUNT=Math.max(1,(os.cpus()||[]).length);
 const AUTO_CONCURRENCY=CPU_COUNT>=8?2:1;
-const MAX_CONCURRENCY=Math.max(1,Math.min(Number(process.env.VS_CONCURRENCY)||AUTO_CONCURRENCY,2));
+const MAX_CONCURRENCY=Math.max(1,Math.min(Number(process.env.VS_CONCURRENCY)||1,2));
 const normLocks=new Map();
 
 function safeId(v){v=String(v||'').toLowerCase().replace(/[^a-z0-9_-]/g,'');return v.length>=8&&v.length<=128?v:null}
@@ -62,8 +62,8 @@ function runOut(bin,args){return new Promise((ok,no)=>{const p=spawn(bin,args,{s
 function runInput(bin,args,input){return new Promise((ok,no)=>{const p=spawn(bin,args,{stdio:['pipe','pipe','pipe'],windowsHide:true});let out='',err='';p.stdout.on('data',d=>out+=d);p.stderr.on('data',d=>err+=d);p.on('error',no);p.on('close',c=>c===0?ok(out.trim()):no(new Error(err||out||bin+' '+c)));p.stdin.end(input)})}
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
 
-app.get('/',(_q,r)=>r.json({ok:true,service:'Viral Studio Motor Cloud',version:'8.1',maxBatch:20,concurrency:MAX_CONCURRENCY,mode:'cloud-render'}));
-app.get('/health',(_q,r)=>r.json({ok:true,service:'Viral Studio Motor Cloud',engine:'cloud',version:'8.1',mode:'cloud-render',maxBatch:20,concurrency:MAX_CONCURRENCY,active,queued:queue.length,storage:storageSummary(),capabilities:{linkMp4:true,linkInfo:true,linkAnalyze:true,batchZip:false,autoCleanup:true,mobile720p:true,uploadMp4:true}}));
+app.get('/',(_q,r)=>r.json({ok:true,service:'Viral Studio Motor Cloud',version:'8.2',maxBatch:20,concurrency:MAX_CONCURRENCY,mode:'cloud-render'}));
+app.get('/health',(_q,r)=>r.json({ok:true,service:'Viral Studio Motor Cloud',engine:'cloud',version:'8.2',mode:'cloud-render',maxBatch:20,concurrency:MAX_CONCURRENCY,active,queued:queue.length,storage:storageSummary(),capabilities:{linkMp4:true,linkInfo:true,linkAnalyze:true,batchZip:false,autoCleanup:true,mobile720p:true,uploadMp4:true}}));
 app.get('/storage',(_q,r)=>r.json({ok:true,...storageSummary()}));
 app.post('/storage/cleanup',(_q,r)=>{const freed=cleanupStorage(true);r.json({ok:true,freedMB:Math.round(freed/1024/1024),...storageSummary()})});
 function isTikTokUrl(v){
@@ -157,7 +157,7 @@ app.post('/tiktok/link-analyze',async(req,res)=>{
     if(!isTikTokUrl(original))return res.status(400).json({error:'Link do TikTok inválido'});
     const u=await resolveTikTokUrl(original);
     const endpoint='https://www.tiktok.com/oembed?url='+encodeURIComponent(u);
-    const rr=await fetch(endpoint,{headers:{'User-Agent':'Mozilla/5.0 ViralStudioCloud/8.1'}});
+    const rr=await fetch(endpoint,{headers:{'User-Agent':'Mozilla/5.0 ViralStudioCloud/8.2'}});
     if(!rr.ok)return res.status(502).json({error:'TikTok não retornou os dados públicos desse vídeo'});
     const ref=await rr.json();
     const product=String(req.body?.product||'').trim().slice(0,160);
@@ -208,7 +208,19 @@ async function mediaInfo(file){
 }
 
 async function ensureNormalized(id){
-  const n=normPath(id); if(fs.existsSync(n)) return n;
+  const n=normPath(id);
+  if(fs.existsSync(n)){
+    // Link-source pode gerar MP4 visual sem áudio. O remix usa filtros de áudio,
+    // então garantimos uma faixa AAC silenciosa antes de qualquer corte.
+    if(await hasAudio(n)) return n;
+    if(normLocks.has(id)) return normLocks.get(id);
+    const repair=(async()=>{
+      const tmp=n+'.audio-'+Date.now()+'.mp4';
+      await run(['-y','-hide_banner','-loglevel','error','-i',n,'-f','lavfi','-i','anullsrc=channel_layout=stereo:sample_rate=44100','-map','0:v:0','-map','1:a:0','-c:v','copy','-c:a','aac','-b:a','96k','-shortest','-movflags','+faststart',tmp]);
+      fs.renameSync(tmp,n); return n;
+    })().finally(()=>normLocks.delete(id));
+    normLocks.set(id,repair); return repair;
+  }
   if(normLocks.has(id)) return normLocks.get(id);
   const p=(async()=>{
     const src=rawPath(id); if(!fs.existsSync(src)) throw new Error('Asset ausente: '+id);
@@ -337,8 +349,18 @@ async function processRemix(job,out){
 
 
 async function synthesizeNarration(text,wav){
-  // Cloud: voz neural via edge-tts. Salva MP3 mesmo que a variável se chame wav por compatibilidade interna.
-  await runOut('python3',[path.join(__dirname,'tts.py'),String(text||''),wav]);
+  // Cloud: voz neural via edge-tts. Serviços gratuitos podem oscilar;
+  // tentamos novamente automaticamente antes de considerar falha.
+  let last=null;
+  for(let attempt=1;attempt<=3;attempt++){
+    try{
+      cleanFile(wav);
+      await runOut('python3',[path.join(__dirname,'tts.py'),String(text||''),wav]);
+      if(fs.existsSync(wav)&&fs.statSync(wav).size>512)return;
+      throw new Error('A voz retornou um arquivo vazio.');
+    }catch(e){last=e;if(attempt<3)await wait(900*attempt);}
+  }
+  throw last||new Error('Falha temporária ao gerar a voz.');
 }
 async function addNarration(video,out,text,targetDuration){
   const wav=path.join(TMP,'voice-'+crypto.randomUUID()+'.wav');
@@ -427,6 +449,14 @@ app.post('/jobs',(req,res)=>{
   };
   jobs.set(id,job); if(signature)signatures.set(signature,id); queue.push(id); pump(); res.status(202).json({ok:true,id,status:'queued'});
 });
+app.post('/jobs/:id/retry',(req,res)=>{
+  const old=jobs.get(String(req.params.id));
+  if(!old)return res.status(404).json({error:'Job não encontrado'});
+  const id=crypto.randomUUID();
+  const job={...old,id,status:'queued',progress:0,createdAt:Date.now(),startedAt:null,finishedAt:null,error:null,size:0};
+  jobs.set(id,job); queue.push(id); pump();
+  res.status(202).json({ok:true,id,status:'queued',retryOf:old.id});
+});
 app.post('/jobs/status',(req,res)=>{const ids=Array.isArray(req.body?.ids)?req.body.ids.slice(0,100):[];res.json({ok:true,jobs:ids.map(id=>{const j=jobs.get(String(id));return j?{id:j.id,status:j.status,progress:j.progress,preset:j.preset,mode:j.mode,error:j.error||null,size:j.size||0}: {id:String(id),status:'missing',progress:100,error:'Job não encontrado'}})})});
 app.get('/jobs/:id',(req,res)=>{const j=jobs.get(String(req.params.id));if(!j)return res.status(404).json({error:'Job não encontrado'});res.json({ok:true,id:j.id,status:j.status,progress:j.progress,error:j.error||null,size:j.size||0})});
 app.get('/jobs/:id/file',(req,res)=>{
@@ -447,5 +477,5 @@ app.get('/jobs/:id/file',(req,res)=>{
 
 cleanupStorage(true);
 setInterval(()=>{const cutoff=Date.now()-90*60*1000;for(const [id,j] of jobs){if((j.finishedAt||j.createdAt)<cutoff&&['ready','error'].includes(j.status)){jobs.delete(id);cleanFile(outPath(id))}}cleanupStorage(false)},10*60*1000).unref?.();
-const server=app.listen(Number(process.env.PORT)||10000,'0.0.0.0',()=>console.log(`Viral Studio Cloud Render V8.0 pronto na porta 10000 — Multiplicador de Criativos — fila até 100 — ${MAX_CONCURRENCY} renderizações paralelas`));
+const server=app.listen(Number(process.env.PORT)||10000,'0.0.0.0',()=>console.log(`Viral Studio Cloud Render V8.2 pronto na porta 10000 — Multiplicador de Criativos — fila até 100 — ${MAX_CONCURRENCY} renderizações paralelas`));
 server.requestTimeout=30*60*1000;server.headersTimeout=31*60*1000;server.keepAliveTimeout=65000;

@@ -6,6 +6,8 @@ services:
     healthCheckPath: /health
     autoDeploy: true
     envVars:
+      - key: VS_CONCURRENCY
+        value: "1"
       - key: NODE_ENV
         value: production
       - key: MAX_CONCURRENCY
