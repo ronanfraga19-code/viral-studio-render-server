@@ -538,10 +538,38 @@ function realPrompt(dna,variant,duration,index,audioMode='ambient',visualCopy={}
   const audio=audioMode==='ambient'?'Natural environmental audio only: realistic footsteps synchronized with walking, subtle fabric movement, room or street ambience appropriate to the scene. No spoken dialogue, no music.':audioMode==='silent'?'No audio is required.':'No generated dialogue; narration will be added later by the app.';
   return `Vertical 9:16 realistic UGC TikTok Shop video, ${Math.max(4,Math.min(10,Number(duration)||8))} seconds. Create a COMPLETELY NEW video from scratch. Adult Brazilian female influencer with a clearly different appearance from any reference person; do not imitate, recreate, face-match or clone any real person. Product: ${safeText(dna.product,180)}. Preserve only these observable product characteristics: ${safeText(dna.product_visual,420)}. Creative idea: ${safeText(dna.idea,260)}. Selling angle: ${safeText(dna.selling_angle,260)}. ${internal}. Action and movement: ${safeText(dna.movement,360)}. Scene variation: ${scene}. Dynamic human motion inspired only by the reference rhythm: enter walking, approach camera, step back, turn sideways, rotate body naturally, use hands to show the product or fabric, alternate full-body and medium close-up, end in a clean product-focused pose. Camera follows naturally like a real phone recording. Do not make a static photo animation. Do not use repetitive zoom in/zoom out as the main motion. No on-screen text, no captions, no subtitles, no watermarks, no TikTok UI, no usernames, no copied logos. Clean realistic lighting, believable hands, feet and product interaction, realistic fabric physics, mobile phone UGC look, high detail. ${audio} Do not copy any original video frame.`;
 }
+
+async function pollinationsKeyCheck(){
+  if(!REAL_AI_KEY || REAL_AI_KEY_TYPE!=='secret') return {ok:false,status:0,reason:'missing_or_not_secret'};
+  try{
+    const r=await fetch('https://gen.pollinations.ai/account/key',{
+      method:'GET',
+      headers:{'Authorization':'Bearer '+REAL_AI_KEY,'Accept':'application/json'},
+      redirect:'manual'
+    });
+    let body='';
+    try{ body=await r.text(); }catch(_){}
+    return {ok:r.ok,status:r.status,reason:r.ok?'accepted':(r.status===401?'rejected':'provider_error'),detail:safeText(body,240)};
+  }catch(e){
+    return {ok:false,status:0,reason:'network_error',detail:safeText(e.message||e,240)};
+  }
+}
+
 async function generateRealVideo(prompt,duration,dest){
-  if(!REAL_AI_KEY_VALID)throw new Error('Chave da IA Real inválida. No Render, use a chave real completa em POLLINATIONS_API_KEY; não use sk_..., sk_… ou texto de exemplo.');
+  if(!REAL_AI_KEY_VALID)throw new Error('Chave da IA Real ausente no servidor.');
+  const auth=await pollinationsKeyCheck();
+  if(!auth.ok){
+    if(auth.status===401) throw new Error('Pollinations rejeitou a chave secreta configurada no servidor. Crie uma nova chave sk_ e substitua POLLINATIONS_API_KEY no Render.');
+    throw new Error('Não consegui validar a chave no provedor agora. Tente novamente em alguns minutos.');
+  }
   const d=Math.max(4,Math.min(10,Number(duration)||8));
-  const url='https://gen.pollinations.ai/video/'+encodeURIComponent(prompt)+'?model='+encodeURIComponent(REAL_AI_VIDEO_MODEL)+'&duration='+encodeURIComponent(d)+'&key='+encodeURIComponent(REAL_AI_KEY);
+  const base='https://gen.pollinations.ai/video/'+encodeURIComponent(prompt);
+  const qs=new URLSearchParams();
+  qs.set('model',REAL_AI_VIDEO_MODEL);
+  qs.set('duration',String(d));
+  qs.set('aspectRatio','9:16');
+  qs.set('key',REAL_AI_KEY);
+  const url=base+'?'+qs.toString();
   const c=new AbortController(), timer=setTimeout(()=>c.abort(),12*60*1000);
   try{
     const r=await fetch(url,{headers:{'Authorization':'Bearer '+REAL_AI_KEY,'Accept':'video/mp4,application/octet-stream'},redirect:'follow',signal:c.signal});
@@ -593,9 +621,11 @@ async function processAIJob(job){
   finally{cleanFile(visual)}
 }
 function aiPump(){while(aiActive<1&&aiQueue.length){const id=aiQueue.shift(),j=aiJobs.get(id);if(!j||j.status!=='queued')continue;aiActive++;processAIJob(j).finally(()=>{aiActive--;aiPump()})}}
-app.get('/ai-real/status',(_q,res)=>{
-  const message=REAL_AI_KEY_VALID?'IA Real pronta':REAL_AI_KEY_TYPE==='publishable'?'A chave configurada é pk_. Para o backend do Render, use uma chave secreta sk_ da Pollinations.':REAL_AI_KEY_TYPE==='missing'?'POLLINATIONS_API_KEY não foi definida no Render.':'POLLINATIONS_API_KEY inválida ou incompleta.';
-  res.json({ok:true,version:'10.3',mode:'mobile-upload-ai-real',configured:REAL_AI_KEY_VALID,keyPresent:Boolean(REAL_AI_KEY),keyType:REAL_AI_KEY_TYPE,message,videoModel:REAL_AI_VIDEO_MODEL,visionModel:REAL_AI_VISION_MODEL,originalFramesReused:false,audio:'ambient-default',audioModes:['ambient','silent','vendedora'],mobileReferenceFrames:true,downloadRoute:'/ai-real/jobs/:id/file?download=1'});
+app.get('/ai-real/status',async(_q,res)=>{
+  const provider=REAL_AI_KEY_VALID?await pollinationsKeyCheck():{ok:false,status:0,reason:'not_configured'};
+  const configured=REAL_AI_KEY_VALID&&provider.ok;
+  const message=configured?'IA Real pronta e chave aceita pelo provedor':provider.status===401?'A Pollinations rejeitou a chave configurada no Render':REAL_AI_KEY_TYPE==='publishable'?'A chave configurada é pk_. Use uma chave secreta sk_ no backend.':REAL_AI_KEY_TYPE==='missing'?'POLLINATIONS_API_KEY não foi definida no Render.':'Não consegui validar a chave agora.';
+  res.json({ok:true,version:'10.4',mode:'mobile-upload-ai-real',configured,keyPresent:Boolean(REAL_AI_KEY),keyType:REAL_AI_KEY_TYPE,providerAuth:{ok:provider.ok,status:provider.status,reason:provider.reason},message,videoModel:REAL_AI_VIDEO_MODEL,visionModel:REAL_AI_VISION_MODEL,originalFramesReused:false,audio:'ambient-default',audioModes:['ambient','silent','vendedora'],mobileReferenceFrames:true,downloadRoute:'/ai-real/jobs/:id/file?download=1'});
 });
 app.post('/ai-real/analyze',async(req,res)=>{
  try{

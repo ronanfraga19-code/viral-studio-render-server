@@ -1,0 +1,1 @@
+V10.4: valida a Secret Key diretamente em https://gen.pollinations.ai/account/key antes de liberar IA Real. O status agora mostra providerAuth sem expor a chave. Geração usa Authorization Bearer e ?key=, aspectRatio=9:16.
