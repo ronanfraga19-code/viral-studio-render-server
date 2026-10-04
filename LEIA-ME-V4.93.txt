@@ -1,0 +1,9 @@
+VIRAL STUDIO V4.93 — BOTÃO MOTOR + TUTORIAL
+
+Base: V4.90 híbrida funcional.
+- Sem painel lateral novo.
+- Botão BAIXAR MOTOR PC dentro do Studio.
+- Botão VER COMO INSTALAR abre vídeo MP4 sem áudio.
+- Motor PC V6.4 incluído dentro de assets.
+- Gancho, Corpo e CTA receberam pequenos ícones/cores.
+- Lógica do Motor PC, Motor Local, histórico e geração preservada.

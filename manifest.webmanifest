@@ -1,0 +1,12 @@
+{
+  "name": "Viral Studio V4.89",
+  "short_name": "Viral Studio",
+  "start_url": "./",
+  "scope": "./",
+  "id": "./",
+  "display": "standalone",
+  "background_color": "#080b10",
+  "theme_color": "#080b10",
+  "orientation": "any",
+  "description": "Viral Studio para Android e iOS."
+}

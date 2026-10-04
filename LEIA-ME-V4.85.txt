@@ -1,0 +1,4 @@
+Viral Studio V4.85 FAST PC
+- Motor PC em até 2 jobs
+- player tenta redescobrir o túnel se o endereço mudar
+- cache atualizado

@@ -1,0 +1,1 @@
+Viral Studio V4.87 — Motor PC automático. Não é necessário copiar/colar URL. Abra o Motor PC V6.2 Auto no computador; o Studio valida a URL salva, redescobre o túnel se mudar e reconecta durante a fila.

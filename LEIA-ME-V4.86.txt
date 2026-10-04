@@ -1,0 +1,20 @@
+Viral Studio V4.86 — Conexão V4.70
+
+Base visual/estrutura: V4.85.
+Conexão Motor PC: restaurada da V4.70 enviada pelo usuário.
+
+Mantido:
+- interface atual
+- fluxo Gancho + Corpo + CTA
+- player atual
+- seleção/fila atual
+
+Restaurado da V4.70:
+- descoberta automática do Motor PC
+- URL de pareamento
+- cache de assets por hash
+- criação de jobs
+- espera/reconexão de jobs
+- fallback /render
+
+Importante: use com o mesmo Motor PC compatível com a conexão da V4.70.

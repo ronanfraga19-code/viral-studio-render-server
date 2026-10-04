@@ -1,0 +1,7 @@
+VIRAL STUDIO V4.90
+
+- Pareamento automático do Motor PC via registro persistente no Supabase (sem depender do Render para descobrir o túnel).
+- AUTO prioriza Motor PC e usa Motor Local quando o PC não estiver disponível.
+- Motor Local móvel usa 540x960 / 20 fps / bitrate reduzido para diminuir aquecimento e memória.
+- Vídeos prontos ficam no histórico local e não mantêm ObjectURLs grandes presos na memória.
+- Assistir/baixar carrega o arquivo salvo somente quando o usuário toca.

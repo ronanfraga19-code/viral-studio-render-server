@@ -1,0 +1,6 @@
+Viral Studio V4.88 — Motor PC automático
+
+Esta versão usa o Pair Bridge em https://viral-studio-motor-cloud.onrender.com para descobrir automaticamente a URL temporária do Motor PC.
+
+Use junto com Motor PC V6.3 AUTO e Pair Bridge V1.0.
+Não é necessário copiar e colar a URL do túnel no celular.

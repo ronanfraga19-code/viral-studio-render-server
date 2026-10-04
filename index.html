@@ -1,0 +1,698 @@
+<!doctype html><html lang="pt-BR"><head>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#080b10">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Viral Studio">
+<link rel="manifest" href="./manifest.webmanifest?v=454">
+<script>
+// V4.52: o app instalado usa a mesma autenticação do Safari e sempre carrega a versão atual.
+// Removemos service workers antigos para evitar cache preso no iPhone/PWA.
+if('serviceWorker' in navigator){addEventListener('load',async()=>{try{const rs=await navigator.serviceWorker.getRegistrations();await Promise.all(rs.map(r=>r.unregister()));}catch(e){}try{const ks=await caches.keys();await Promise.all(ks.map(k=>caches.delete(k)));}catch(e){}});}
+if('caches' in window){addEventListener('load',()=>caches.keys().then(keys=>Promise.all(keys.map(k=>caches.delete(k)))).catch(()=>{}));}
+</script>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Viral Studio</title><link rel="stylesheet" href="style.css?v=4.67">
+
+<style id="vs-focus-only">
+/* V4.77 — interface focada somente no Multiplicador Gancho + Corpo + CTA */
+#app>aside,#app>main>header,#mobileHomeBack{display:none!important}
+#app>main{margin:0!important;width:100%!important;max-width:1180px!important;padding:18px 18px 70px!important;margin-inline:auto!important}
+#app .page{display:none!important}
+#app #originals.page{display:block!important}
+#vsLocalAIStudio,.vsCreateModes,#vsDirectorPanel,.vsNarrationPanel,#origOpenDirector,#origViralSettings,#origViralPresetStatus{display:none!important}
+.vsFocusTop{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:8px 2px 22px;border-bottom:1px solid #222a36;margin-bottom:20px}
+.vsFocusBrand{font-size:22px;font-weight:900;letter-spacing:.04em;color:#fff}.vsFocusBrand b{background:linear-gradient(90deg,#ff0a8a,#7b42ff,#159cff);-webkit-background-clip:text;background-clip:text;color:transparent}.vsFocusBrand small{display:block;margin-top:3px;color:#8f9bad;font-size:10px;letter-spacing:.18em}
+#vsFocusLogout{width:auto!important;min-width:82px!important;padding:10px 16px!important;border-radius:999px!important}
+.originalsHero{margin-top:0!important}.originalsHero h2{font-size:clamp(30px,6vw,54px)!important}.originalsHero p{max-width:760px!important}
+.origUploadGrid{margin-top:18px!important}.origUploadGrid article{min-height:210px!important}
+.origActionBtns{grid-template-columns:1fr!important}.origActionBtns #origBuild{width:100%!important;min-height:58px!important;font-size:16px!important}
+#origBuild,#origProduce,#vsPcMotorConnect,#vsFocusLogout,.origDownload{background:linear-gradient(90deg,#ff078b 0%,#8544ff 52%,#159cff 100%)!important;color:#fff!important;border:0!important;box-shadow:0 10px 30px rgba(119,65,255,.22)!important;font-weight:900!important}
+.origMath{margin-top:18px!important}.origAction{margin-top:18px!important}
+@media(max-width:760px){#app>main{padding:14px 12px 54px!important}.vsFocusTop{position:sticky;top:0;z-index:20;background:rgba(6,8,12,.94);backdrop-filter:blur(14px);padding:10px 2px 14px}.origSteps{overflow:auto;justify-content:flex-start!important}.origUploadGrid{grid-template-columns:1fr!important}.origMath{grid-template-columns:1fr!important}.originalsShield{display:none!important}.originalsHero{grid-template-columns:1fr!important}.origTR{min-width:650px}.origTable{overflow-x:auto}}
+</style>
+
+<style id="vs-login-v477">
+/* V4.77 — login limpo inspirado na referência, mantendo identidade Viral Studio */
+#auth.authWrap{min-height:100dvh!important;background:radial-gradient(circle at 50% 0,rgba(255,10,138,.10),transparent 30%),radial-gradient(circle at 50% 100%,rgba(21,156,255,.08),transparent 34%),#050607!important;padding:38px 18px 54px!important}
+.authPortal{max-width:760px!important;margin:0 auto!important}
+.authBrand{margin:8px auto 30px!important;text-align:center!important}.authBrand span{font-size:20px!important;letter-spacing:5px!important;background:linear-gradient(90deg,#ff078b,#8b43ff,#159cff);-webkit-background-clip:text;background-clip:text;color:transparent!important}.authBrand h1{display:none!important}.authBrand p{display:none!important}
+.authPlans{display:none!important}
+.authPortal .authCard{width:min(690px,100%)!important;background:#0d0f12!important;border:1px solid #2d3138!important;border-radius:34px!important;padding:46px 48px 42px!important;box-shadow:0 26px 80px rgba(0,0,0,.48)!important}
+.authCard:before{content:"Entrar"!important;display:block!important;background:none!important;color:#fff!important;-webkit-text-fill-color:#fff!important;font-size:42px!important;line-height:1!important;letter-spacing:-1px!important;margin:0 0 12px!important;text-shadow:none!important}
+.authCard:after{content:"Bem-vindo de volta, creator."!important;position:static!important;display:block!important;transform:none!important;background:none!important;box-shadow:none!important;padding:0!important;color:#8f919a!important;font-size:20px!important;font-weight:500!important;margin-bottom:34px!important}
+.authTabs{display:none!important}
+#loginPane h2,#loginPane>.muted{display:none!important}
+#loginPane input{width:100%!important;min-height:68px!important;background:#050607!important;border:1px solid #34373d!important;border-radius:20px!important;color:#fff!important;font-size:20px!important;padding:0 22px!important;margin:0 0 18px!important;box-shadow:none!important}
+#loginPane input::placeholder{color:#777982!important}
+.passwordField{position:relative!important}.passwordField input{padding-right:72px!important}.passwordToggle{position:absolute!important;right:10px!important;top:10px!important;width:50px!important;height:48px!important;border:0!important;background:transparent!important;color:#aaa!important;font-size:23px!important;box-shadow:none!important}
+html body #loginPane #login{width:100%!important;min-height:68px!important;border-radius:999px!important;margin-top:12px!important;font-size:19px!important;background:linear-gradient(90deg,#ff078b 0%,#8b43ff 52%,#159cff 100%)!important;box-shadow:0 12px 34px rgba(123,66,255,.28)!important}
+.authHelpers{justify-content:center!important;margin-top:25px!important;gap:26px!important}.authHelpers button{font-size:15px!important;color:#9a9ca5!important;background:transparent!important;box-shadow:none!important}.authHelpers button:hover{color:#fff!important}
+#signupPane{margin-top:0!important}#signupPane h2{font-size:32px!important}.authMessage{margin-top:16px!important}
+@media(max-width:760px){#auth.authWrap{padding:28px 18px 42px!important}.authBrand{margin:8px auto 26px!important}.authBrand span{font-size:16px!important;letter-spacing:4px!important}.authPortal .authCard{padding:34px 24px 32px!important;border-radius:28px!important}.authCard:before{font-size:36px!important}.authCard:after{font-size:17px!important;margin-bottom:28px!important}#loginPane input{min-height:62px!important;font-size:18px!important;border-radius:18px!important}html body #loginPane #login{min-height:62px!important;font-size:18px!important}.authHelpers{flex-direction:column!important;gap:8px!important;align-items:center!important}}
+</style>
+</head>
+<body>
+<div id="auth" class="authWrap">
+ <div class="authPortal">
+  <div class="authBrand"><span>VIRAL STUDIO</span><h1>Crie mais. Varie mais. Venda melhor.</h1><p>Escolha seu plano e acesse sua central de criação.</p></div>
+  <div class="authPlans">
+   <article data-plan="monthly"><span>PARA COMEÇAR</span><h3>Mensal</h3><strong>R$ 39,90</strong><small>/ mês</small><p>Acesso ao Viral Studio enquanto a assinatura estiver ativa.</p><button type="button" class="choosePlan" data-plan="monthly">ESCOLHER MENSAL</button></article>
+   <article data-plan="quarterly"><span>MAIS ECONOMIA</span><h3>Trimestral</h3><strong>R$ 99,90</strong><small>/ 3 meses</small><p>Mais tempo para produzir e testar seus criativos.</p><button type="button" class="choosePlan" data-plan="quarterly">ESCOLHER TRIMESTRAL</button></article>
+   <article class="featured" data-plan="annual"><span>⭐ PRO</span><h3>PRO Anual</h3><strong>R$ 297,90</strong><small>/ ano</small><p>Acesso anual ao ecossistema Viral Studio.</p><button type="button" class="choosePlan" data-plan="annual">ESCOLHER PRO ANUAL</button></article>
+  </div>
+  <div class="authCard">
+   <div class="authTabs"><button id="tabLogin" class="active" type="button">ENTRAR</button><button id="tabSignup" type="button">CRIAR CONTA</button></div>
+   <div id="loginPane"><h2>Entre na sua conta</h2><p class="muted">ADMIN entra com acesso total. Clientes precisam de assinatura ativa.</p><input id="email" type="email" autocomplete="email" autocapitalize="none" autocorrect="off" spellcheck="false" inputmode="email" placeholder="Seu e-mail"><div class="passwordField"><input id="password" type="password" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="Sua senha"><button id="togglePassword" class="passwordToggle" type="button" aria-label="Mostrar senha" title="Mostrar senha">👁</button></div><button id="login" class="primary">ENTRAR NO VIRAL STUDIO</button><div class="authHelpers"><button id="forgotPassword" type="button">Esqueci minha senha</button><button id="resendConfirmation" type="button">Reenviar e-mail de confirmação</button></div></div>
+   <div id="signupPane" class="hidden"><h2>Criar conta</h2><p class="muted">Plano escolhido: <b id="selectedPlanLabel">Mensal — R$ 39,90</b></p><input id="signupEmail" type="email" autocomplete="email" placeholder="Seu e-mail"><input id="signupPassword" type="password" autocomplete="new-password" placeholder="Crie uma senha forte"><button id="signup" class="primary">CRIAR MINHA CONTA</button><small>Após o cadastro, o acesso de cliente só é liberado quando a assinatura estiver ativa.</small></div>
+   <div id="authMessage" class="authMessage hidden"></div>
+  </div>
+ </div>
+</div>
+
+<div id="loginDemoModal" class="loginDemoModal hidden" aria-hidden="true">
+  <div class="loginDemoModalCard tutorialDemoCard">
+    <button id="closeLoginDemo" class="loginDemoClose" type="button">×</button>
+    <span>VIRAL STUDIO • DEMONSTRAÇÃO REAL</span>
+    <h3>Veja a plataforma por dentro</h3>
+    <div id="vsLoginTutorial" class="vsLoginTutorial" aria-live="polite">
+      <div class="vsTutorialTopbar"><b id="vsTutorialStepLabel">1/6 • PAINEL</b><small id="vsTutorialStepText">Acompanhe produção, downloads, fila e Motor PC.</small></div>
+      <div class="vsTutorialStage">
+        <div class="vsTutorialScene active" data-step="0">
+          <div class="vsDemoShell">
+            <aside class="vsDemoAside"><strong>VIRAL <em>STUDIO</em></strong><span>⌂ Início</span><span>✦ Central de Originais</span><span>🔥 Viral Shop</span><span>✧ Viral IA</span><span>▥ Resultados</span></aside>
+            <main class="vsDemoMain"><header><div><small>DASHBOARD</small><h4>Produza. Baixe. Publique.</h4></div><b class="demoStatus">● MOTOR PC</b></header>
+              <div class="vsDemoStats"><article><span>✅ PRONTOS HOJE</span><b>37</b></article><article><span>⬇️ BAIXADOS</span><b>28</b></article><article><span>⏳ FILA</span><b>12</b></article><article><span>💻 MOTOR PC</span><b>ON</b></article></div>
+              <div class="vsDemoActions"><div>🎬 <b>Central de Originais</b><small>Subir, combinar, produzir e baixar</small></div><div>🔥 <b>Viral Shop</b><small>Ganchos, dores e estilos de venda</small></div><div>✦ <b>Viral IA</b><small>Roteiros e criativos</small></div></div>
+            </main>
+          </div>
+        </div>
+        <div class="vsTutorialScene" data-step="1">
+          <div class="vsDemoShell">
+            <aside class="vsDemoAside"><strong>VIRAL <em>STUDIO</em></strong><span>⌂ Início</span><span class="on">✦ Central de Originais</span><span>🔥 Viral Shop</span><span>▥ Resultados</span></aside>
+            <main class="vsDemoMain"><header><div><small>FUNÇÃO PRINCIPAL</small><h4>Central de Originais</h4></div><b class="demoStatus">💾 SALVO</b></header>
+              <div class="vsDemoSteps"><span class="on">1 ADICIONAR</span><i>→</i><span>2 CALCULAR</span><i>→</i><span>3 REVISAR</span><i>→</i><span>4 PRODUZIR</span></div>
+              <div class="vsDemoUploads"><article><b>1. GANCHO</b><small>10 arquivos</small></article><article><b>2. CORPO</b><small>10 arquivos</small></article><article><b>3. CTA</b><small>10 arquivos</small></article></div>
+              <button class="vsDemoPrimary">🚀 GERAR MÁXIMO DE ORIGINAIS</button>
+            </main>
+          </div>
+        </div>
+        <div class="vsTutorialScene" data-step="2">
+          <div class="vsDemoShell">
+            <aside class="vsDemoAside"><strong>VIRAL <em>STUDIO</em></strong><span>⌂ Início</span><span>✦ Central de Originais</span><span class="on">🔥 Viral Shop</span><span>▥ Resultados</span></aside>
+            <main class="vsDemoMain"><header><div><small>TIKTOK SHOP</small><h4>Viral Shop Engine</h4></div><b class="demoStatus fire">🔥 ATIVO</b></header>
+              <div class="vsDemoViralGrid"><article><b>Produto Campeão</b><small>Produto + benefício + demonstração</small></article><article><b>Problema → Solução</b><small>Dor real + produto em uso</small></article><article><b>UGC / Vlog</b><small>Recomendação natural</small></article><article><b>POV</b><small>Demonstração em primeira pessoa</small></article></div>
+              <div class="vsDemoInsight"><b>🪝 Gancho sugerido</b><span>“Tem um detalhe nesse produto que quase ninguém mostra...”</span></div>
+            </main>
+          </div>
+        </div>
+        <div class="vsTutorialScene" data-step="3">
+          <div class="vsDemoShell">
+            <aside class="vsDemoAside"><strong>VIRAL <em>STUDIO</em></strong><span>✦ Central de Originais</span><span>🔥 Viral Shop</span><span class="on">⚡ Produção</span><span>▥ Resultados</span></aside>
+            <main class="vsDemoMain"><header><div><small>PRODUÇÃO EM LOTE</small><h4>Até 100 vídeos por lote</h4></div><b class="demoStatus">💻 PC</b></header>
+              <div class="vsDemoProgress"><div><b>Produzindo 38/100</b><span>38%</span></div><i><em></em></i><small>3 renderizações em paralelo • fila automática</small></div>
+              <div class="vsDemoQueue"><span>✓ Vídeo 01 • PRONTO</span><span>⚡ Vídeo 39 • GERANDO</span><span>⏳ Vídeo 40 • NA FILA</span><span>⏳ Vídeo 41 • NA FILA</span></div>
+            </main>
+          </div>
+        </div>
+        <div class="vsTutorialScene" data-step="4">
+          <div class="vsDemoShell">
+            <aside class="vsDemoAside"><strong>VIRAL <em>STUDIO</em></strong><span>✦ Central de Originais</span><span>🔥 Viral Shop</span><span class="on">▥ Resultados</span></aside>
+            <main class="vsDemoMain"><header><div><small>RESULTADOS</small><h4>Vídeos prontos para postar</h4></div><b class="demoStatus">✓ PRONTO</b></header>
+              <div class="vsDemoResults"><article><b>Vídeo 01</b><small>G1 + C1 + CTA1 • Produto Campeão</small><div><button>▶ ASSISTIR</button><button>⬇ DOWNLOAD</button></div></article><article><b>Vídeo 02</b><small>G2 + C3 + CTA2 • UGC</small><div><button>▶ ASSISTIR</button><button>⬇ DOWNLOAD</button></div></article></div>
+            </main>
+          </div>
+        </div>
+        <div class="vsTutorialScene" data-step="5">
+          <div class="vsDemoFinish"><span>VIRAL STUDIO</span><h4>Do arquivo ao TikTok Shop</h4><p>Suba seus vídeos → transforme em viral → produza em lote → baixe → publique.</p><b>CRIE • PRODUZA • BAIXE • PUBLIQUE</b></div>
+        </div>
+      </div>
+      <div class="vsTutorialControls"><button id="vsTutorialPrev" type="button">‹</button><button id="vsTutorialPlay" type="button">❚❚ PAUSAR</button><button id="vsTutorialNext" type="button">›</button></div>
+      <div id="vsTutorialDots" class="vsTutorialDots"><i class="on"></i><i></i><i></i><i></i><i></i><i></i></div>
+    </div>
+    <p>Uma demonstração guiada usando o mesmo visual e fluxo do Viral Studio.</p>
+  </div>
+</div>
+
+<div id="app" class="app hidden">
+ <aside><div class="logo">VIRAL <b>STUDIO</b></div><div class="account accountTop">
+ <div class="miniUser">
+  <div class="sideAvatarWrap" id="sideAvatarPicker" title="Alterar foto"><span id="sideAvatar" class="avatar small">C</span><img id="sidePhoto" class="sidePhoto hidden" alt="Foto da conta"><span class="avatarEditBadge">📷</span><input id="sidePhotoInput" type="file" accept="image/png,image/jpeg,image/webp" hidden></div>
+  <div class="accountText"><b id="sideName">Administrador</b><small id="sideEmail"></small><em>Viral Studio • Local</em></div>
+ </div>
+ <div class="accountBottom"><span id="sidePlan"></span><button id="logout">SAIR</button></div>
+</div>
+ <nav id="vsMainNav">
+  <button data-page="profile">👤 Meu Perfil</button>
+  <button data-page="dashboard" class="active">⌂ Início</button>
+  <button data-page="admin" id="adminNav" class="hidden">♛ Administração</button>
+  <button data-page="originals">✦ Central de Originais <span class="proMini">PRINCIPAL</span></button>
+  <button data-page="viralshop" id="viralShopNav">🔥 Viral Shop</button>
+  <button data-page="viralai" id="viralAiNav">✧ Viral IA</button>
+  <button data-page="results">▥ Resultados</button>
+  <button data-page="library">▤ Biblioteca / Ajuda</button>
+  <button data-page="publish">↗ Publicar</button>
+  <button data-page="shopcheck">✓ Verificar</button>
+ </nav></aside>
+ <main>
+  <button id="mobileHomeBack" class="mobileHomeBack hidden" type="button" aria-label="Voltar ao início">← <span>Início</span></button>
+  <header><div><h2 id="pageTitle">Dashboard</h2><p id="welcome">Central de produção</p></div><div id="licenseBadge" class="badge"></div></header>
+
+  <section id="dashboard" class="page">
+<div class="cleanDashHero">
+ <div><span class="vsEyebrow">VIRAL STUDIO</span><h1>Produza. Baixe. Publique.</h1><p>Seu painel principal, sem botões repetidos. Acompanhe a produção e entre direto na ferramenta que precisa.</p></div>
+ <button class="primary goOriginals">⚡ CRIAR NOVO LOTE</button>
+</div>
+<div class="productionStatsGrid">
+ <article><span>✅ PRONTOS HOJE</span><strong id="vsStatReadyToday">0</strong><small>vídeos concluídos</small></article>
+ <article><span>⬇️ BAIXADOS HOJE</span><strong id="vsStatDownloadedToday">0</strong><small>downloads realizados</small></article>
+ <article><span>⏳ FILA ATUAL</span><strong id="vsStatQueue">0</strong><small>aguardando / produzindo</small></article>
+ <article><span>💻 MOTOR PC</span><strong id="vsStatMotor">—</strong><small id="vsStatMotorDetail">verificando conexão</small></article>
+</div>
+<div class="cleanDashActions">
+ <button class="cleanAction main goOriginals"><i>🎬</i><div><b>Central de Originais</b><span>Subir arquivos, combinar, produzir e baixar</span></div><em>→</em></button>
+ <button class="cleanAction viralShopDash" data-page-jump="viralshop"><i>🔥</i><div><b>Viral Shop</b><span>Ganchos, dores, estilos e variações para TikTok Shop</span></div><em>→</em></button>
+ <button class="cleanAction" data-page-jump="viralai"><i>✦</i><div><b>Viral IA</b><span>Roteiros, ideias, voz e criativos</span></div><em>→</em></button>
+ <button class="cleanAction" data-page-jump="results"><i>📊</i><div><b>Resultados</b><span>Veja suas combinações e produção</span></div><em>→</em></button>
+ <button class="cleanAction" data-page-jump="profile"><i>👤</i><div><b>Meu Perfil</b><span>Conta, foto e assinatura</span></div><em>→</em></button>
+</div>
+<div class="cleanDashTip"><b>Fluxo rápido:</b> Central de Originais → Produzir → Download → Publicar. As outras ferramentas continuam no menu lateral quando você precisar.</div>
+<span id="statCombos" class="hidden">0</span><span id="dashCombos" class="hidden">0</span>
+</section>
+  <section id="originals" class="page hidden">
+<div class="vsFocusTop"><div class="vsFocusBrand">VIRAL <b>STUDIO</b><small>MULTIPLICADOR</small></div><button id="vsFocusLogout" type="button">SAIR</button></div>
+<div class="originalsHero">
+ <div><span>MULTIPLICADOR DE VÍDEOS</span><h2>Gancho + Corpo + CTA</h2><small class="origAutosaveNote">💾 Salvamento automático ativo neste aparelho.</small><p>Adicione seus Ganchos, Corpos e CTAs. O Viral Studio combina os blocos e prepara as variações sem repetir pares dentro do mesmo lote.</p></div>
+ <div class="originalsShield">VS<small>ORIGINAL</small></div>
+</div>
+<div class="origSteps"><span class="on">1 ADICIONAR</span><i>→</i><span>2 CALCULAR</span><i>→</i><span>3 REVISAR</span><i>→</i><span>4 PRODUZIR</span></div>
+<div id="vsPcMotorPanel" style="margin:16px 0 20px;padding:18px;border:1px solid #27324a;border-radius:18px;background:#0d1118">
+ <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap"><div><b style="font-size:18px">💻 MOTOR PC — CONEXÃO AUTOMÁTICA</b><div id="vsPcMotorStatus" style="margin-top:6px;color:#ffd166">🟡 Procurando Motor PC…</div></div><button id="vsPcMotorConnect" type="button">↻ VERIFICAR AGORA</button></div>
+ <p style="color:#9aa6b8;margin:12px 0">Não precisa copiar nem colar URL. Abra o Motor PC atualizado no computador e o Viral Studio encontra a conexão sozinho, inclusive quando o túnel muda.</p>
+ <details style="margin-top:8px"><summary style="cursor:pointer;color:#77839a">Diagnóstico do Motor PC</summary><div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px"><input id="vsPcMotorUrl" type="url" inputmode="url" autocapitalize="off" autocomplete="off" placeholder="A URL do Motor PC aparecerá aqui automaticamente" readonly style="flex:1;min-width:240px"><button id="vsPcMotorDisconnect" type="button" class="secondary" style="display:none">LIMPAR URL</button></div></details>
+</div>
+<div id="vsMotorDownloadHelp" class="vsMotorDownloadHelp">
+  <div class="vsMotorDownloadCopy">
+    <b>⚡ Quer gerar mais rápido no computador?</b>
+    <span>O Motor PC é opcional. No celular você pode continuar usando o modo local. No computador, baixe o Motor uma vez e depois é só ligar quando quiser usar.</span>
+  </div>
+  <div class="vsMotorDownloadActions">
+    <a id="vsMotorDownloadBtn" class="vsMotorDownloadBtn" href="assets/viral-studio-motor-pc-v6-4.zip" download="viral-studio-motor-pc-v6-4.zip">⬇ BAIXAR MOTOR PC</a>
+    <button id="vsMotorTutorialBtn" class="vsMotorTutorialBtn" type="button">▶ VER COMO INSTALAR</button>
+  </div>
+</div>
+<div id="vsMotorTutorialModal" class="vsMotorTutorialModal hidden" role="dialog" aria-modal="true" aria-labelledby="vsMotorTutorialTitle">
+  <div class="vsMotorTutorialCard">
+    <div class="vsMotorTutorialHead">
+      <div><b id="vsMotorTutorialTitle">Como instalar e ligar o Motor PC</b><small>Vídeo simples, sem áudio.</small></div>
+      <button id="vsMotorTutorialClose" type="button" aria-label="Fechar">✕</button>
+    </div>
+    <video id="vsMotorTutorialVideo" controls playsinline muted preload="metadata" poster="">
+      <source src="assets/como-instalar-motor-pc.mp4" type="video/mp4">
+    </video>
+    <div class="vsMotorTutorialSteps">
+      <span>1. Baixe o ZIP</span><span>2. Extraia a pasta</span><span>3. Abra <b>INICIAR-MOTOR-PC.bat</b></span><span>4. Deixe o Motor aberto</span>
+    </div>
+    <p>Se o Windows avisar que Node.js ou FFmpeg não foi encontrado, instale esses componentes no computador e abra o arquivo do Motor novamente.</p>
+  </div>
+</div>
+<div id="vsHybridEnginePanel" class="vsHybridEnginePanel">
+ <div class="vsHybridHead"><div><b>⚙️ MOTOR DE GERAÇÃO</b><small>Escolha como o Viral Studio deve produzir. No modo AUTO, o PC tem prioridade; sem PC, o próprio aparelho gera.</small></div><span id="vsEngineLiveBadge">AUTO</span></div>
+ <div class="vsEngineChoices">
+  <button type="button" id="vsEngineAuto" data-vs-engine="auto">✨ AUTO</button>
+  <button type="button" id="vsEnginePC" data-vs-engine="pc">💻 MOTOR PC</button>
+  <button type="button" id="vsEngineLocal" data-vs-engine="local">📱 MOTOR LOCAL</button>
+ </div>
+ <div id="vsEngineStatus" class="vsEngineStatus">AUTO: procurando PC; se não encontrar, usa este aparelho.</div>
+</div>
+<div id="vsLocalAIStudio" style="margin:16px 0 20px;padding:20px;border:1px solid #3b4b68;border-radius:20px;background:linear-gradient(145deg,#0d1118,#121a27)">
+ <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap"><div><b style="font-size:20px">🔥 CRIAR 5 VÍDEOS TIKTOK SHOP COM IA LOCAL</b><div style="margin-top:6px;color:#9fb0c9">Envie 1 vídeo. O PC transcreve, cria 5 roteiros diferentes e monta 5 versões com nova narração.</div></div><span style="padding:7px 10px;border-radius:999px;background:#12351f;color:#78e49a;font-weight:800">SEM CRÉDITOS/API</span></div>
+ <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px"><label>Produto (opcional)<input id="vsAIProduct" placeholder="Ex.: cortina blackout"></label><label>Informações verdadeiras do produto<input id="vsAIFacts" placeholder="Ex.: 30% blackout, tecido macio"></label></div>
+ <label class="origDrop" style="margin-top:12px">＋ ESCOLHER VÍDEO DO PRODUTO<input id="vsAISource" type="file" accept="video/*" hidden></label>
+ <div id="vsAIFileName" style="margin:8px 0;color:#9fb0c9">Nenhum vídeo selecionado.</div>
+ <button id="vsAIGenerate" type="button" style="width:100%;margin-top:8px">🧠 ANALISAR E GERAR 5 VÍDEOS →</button>
+ <div id="vsAIStatus" style="margin-top:12px;color:#ffd166">Motor IA Local aguardando.</div>
+ <div id="vsAIResults" class="origOutputs" style="margin-top:12px"></div>
+ <small style="display:block;margin-top:10px;color:#78869c">A IA usa a fala do vídeo e as informações que você fornecer. Revise preço, oferta e características antes de publicar.</small>
+</div><div class="vsCreateModes"><div class="vsCreateModeHead"><b>🎯 3 MODOS DE CRIAÇÃO</b><small>Escolha como o estúdio deve montar seus vídeos.</small></div><div class="vsCreateModeGrid"><button type="button" id="origModeOriginal" class="vsCreateModeCard selected"><span>⚡ ORIGINAL RÁPIDO</span><small>Gera combinações diretas de Gancho + Corpo + CTA para volume.</small></button><button type="button" id="origModeDirector" class="vsCreateModeCard"><span>🎬 DIRETOR IA</span><small>Analisa um vídeo pronto, diagnostica o criativo e reconstrói novas versões com roteiro, narração e cenas diferentes.</small></button><button type="button" id="origModeShopIA" class="vsCreateModeCard"><span>🧠 VIRAL SHOP IA</span><small>Usa ângulo de venda, dor, benefício e estilo para criar versões mais fortes.</small></button></div><div class="vsCreateModeControls"><label><span>Intensidade</span><select id="origRemixIntensity"><option value="leve">Leve</option><option value="forte" selected>Forte</option><option value="muito">Muito Viral</option></select></label><label><span>Duração</span><select id="origRemixDuration"><option value="15">15s</option><option value="20" selected>20s</option><option value="30">30s</option></select></label><label><span>Objetivo</span><select id="origRemixGoal"><option value="venda" selected>Venda</option><option value="retencao">Retenção</option><option value="comentario">Comentário</option><option value="clique">Clique</option></select></label></div><div class="vsCreateModeStatus" id="origModeStatus">Modo atual: ⚡ Original Rápido</div></div><div id="vsDirectorPanel" class="vsNarrationPanel" style="display:none"><div><b>🎬 DIRETOR IA — MELHORAR VÍDEO</b><small>Envie 1 vídeo pronto. O Diretor transcreve, mede o ritmo, cria um diagnóstico e monta 3 versões novas usando momentos diferentes do próprio vídeo.</small></div><label class="origDrop" style="margin-top:10px">＋ ESCOLHER VÍDEO PRONTO<input id="vsDirectorSource" type="file" accept="video/*" hidden></label><small id="vsDirectorFile">Nenhum vídeo selecionado.</small><div class="viralShopForm" style="margin-top:10px"><label>Produto<input id="vsDirectorProduct" placeholder="Ex.: cortina Antonella"></label><label>Fatos que podem ser falados<textarea id="vsDirectorFacts" placeholder="Ex.: 30% blackout, tecido leve, 2,00 x 1,70 m. Não invente informações."></textarea></label></div><div class="vsNarrationMeta"><button type="button" id="vsDirectorAnalyze">🧠 ANALISAR E CRIAR 3 VERSÕES →</button></div><div id="vsDirectorStatus" class="vsCreateModeStatus">Pronto para analisar.</div><div id="vsDirectorDiagnosis" class="viralAnalysis empty" style="margin-top:10px">O diagnóstico do criativo aparecerá aqui.</div><div id="vsDirectorResults" class="origOutputs"></div></div><div class="vsNarrationPanel"><div><b>🎙️ NOVA FALA TIKTOK SHOP</b><small>Opcional: cole a fala original ou gere uma nova no Viral Shop IA. Quando preenchido, o Motor substitui o áudio original por uma nova narração.</small></div><textarea id="origNewNarration" maxlength="900" placeholder="A nova fala gerada aparecerá aqui. Você também pode editar antes de produzir."></textarea><div class="vsNarrationMeta"><span id="origNarrationCount">0 caracteres</span><button type="button" id="origOpenScriptIA">🧠 GERAR NOVA FALA →</button></div></div><div class="origUploadGrid">
+ <article><div class="origHead"><div><b>🧲 GANCHO</b><small>Primeiros segundos</small></div><strong id="ohCount">0/10</strong></div><label class="origDrop">＋ ADICIONAR GANCHOS<input id="ohInput" type="file" accept="video/*" multiple hidden></label><div id="ohList" class="origFileList"></div></article>
+ <article><div class="origHead"><div><b>▤ CORPO</b><small>Demonstração / benefício</small></div><strong id="obCount">0/10</strong></div><label class="origDrop">＋ ADICIONAR CORPOS<input id="obInput" type="file" accept="video/*" multiple hidden></label><div id="obList" class="origFileList"></div></article>
+ <article><div class="origHead"><div><b>↗ CTA</b><small>Chamada para ação</small></div><strong id="ocCount">0/10</strong></div><label class="origDrop">＋ ADICIONAR CTAs<input id="ocInput" type="file" accept="video/*" multiple hidden></label><div id="ocList" class="origFileList"></div></article>
+</div>
+<div class="origMath">
+ <div><span>COMBINAÇÕES POSSÍVEIS</span><strong id="omPossible">0</strong></div>
+ <div class="origGreen"><span>SEM REPETIÇÃO DE PARES</span><strong id="omOriginal">0</strong></div>
+ <div><span>SERÃO PRODUZIDAS</span><strong id="omProduce">0</strong></div>
+</div>
+<div class="origAction"><div class="origActionBtns"><button id="origBuild">⚡ MONTAR COMBINAÇÕES →</button><button id="origOpenDirector" type="button" class="viralShopBtn">🎬 ABRIR DIRETOR IA →</button><button id="origViralSettings" type="button" class="secondary">🧠 ABRIR VIRAL SHOP IA</button></div><p>O cálculo evita repetir os pares Gancho+Corpo, Gancho+CTA e Corpo+CTA dentro deste lote.</p><small id="origViralPresetStatus" class="origViralPresetStatus">Multiplicador Gancho + Corpo + CTA</small></div>
+<div id="origReview" class="panel hidden"><div class="sectionTitle"><div><h3>🔎 Revisar lote</h3><p>Confira a montagem antes de produzir.</p></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button id="vsPcMotor" class="secondary" type="button">💻 MOTOR PC</button><button id="origClear" class="secondary">LIMPAR</button></div></div><div id="origTable" class="origTable"></div><div class="origRenderBar"><span id="origStatus">Lote pronto para revisão.</span><button id="origProduce">🎬 PRODUZIR LOTE</button></div><div id="origProductionProgress" class="origProductionProgress hidden">
+ <div><b id="origProdTitle">Preparando produção...</b><span id="origProdPct">0%</span></div>
+ <div class="origProgressTrack"><i id="origProdBar"></i></div>
+ <small id="origProdDetail">Os vídeos serão produzidos um por vez para manter estabilidade.</small>
+</div>
+<div id="origOutputs" class="origOutputs"></div>
+<div id="vsSavedHistoryPanel" class="vsSavedHistoryPanel">
+ <div class="vsSavedHistoryHead"><div><h3>💾 Histórico salvo neste aparelho</h3><small>Vídeos concluídos continuam aqui mesmo após atualizar ou fechar a página.</small></div><button id="vsHistoryRefresh" type="button" class="secondary">↻ ATUALIZAR</button></div>
+ <div id="vsSavedHistory" class="vsSavedHistoryEmpty">Nenhum vídeo salvo ainda.</div>
+</div></div>
+</section>
+<section id="viralshop" class="page hidden"><div class="pageHead"><div><span>🧠 MODO DE VENDA</span><h1>Viral Shop IA</h1><p>Configure o ângulo do produto e volte para a Central de Originais para produzir o remix.</p></div></div><div class="viralShopPanel"><div class="viralShopForm"><label>Produto<input id="vsShopProduct" placeholder="Ex.: cortina blackout"></label><label>Dor / problema<input id="vsShopPain" placeholder="Ex.: claridade demais no quarto"></label><label>Benefícios reais<textarea id="vsShopBenefits" placeholder="Ex.: tecido leve, acabamento elegante"></textarea></label><label>Oferta real<input id="vsShopOffer" placeholder="Ex.: condição mostrada no carrinho"></label><label>Público<input id="vsShopAudience" placeholder="Ex.: pessoas decorando sala/quarto"></label></div><div><b>ESCOLHA O ESTILO</b><div id="viralPresetGrid" class="viralPresetGrid"><button data-preset="produto">🏆 Produto Campeão</button><button data-preset="problema">🧩 Problema → Solução</button><button data-preset="ugc">📱 UGC / Vlog</button><button data-preset="pov">👀 POV</button><button data-preset="oferta">🏷️ Oferta</button><button data-preset="curiosidade">❓ Curiosidade</button></div><p id="vsShopTiming" class="muted"></p></div><div class="viralScriptAI"><b>🎙️ REMIX DE FALA PARA TIKTOK SHOP</b><p>Se você já sabe a fala do vídeo, cole abaixo. O Studio cria novas versões com gancho, corpo e CTA diferentes.</p><textarea id="vsOriginalSpeech" maxlength="1200" placeholder="Cole aqui a fala original do vídeo..."></textarea><div class="viralScriptButtons"><button type="button" id="vsGenerateScripts">✨ GERAR 5 NOVAS FALAS</button></div><div id="vsScriptResults" class="vsScriptResults"></div></div><div class="viralShopActions"><button id="vsShopAnalyze">🧠 GERAR ÂNGULOS E GANCHOS</button><button id="vsShopApply">🔥 APLICAR E VOLTAR PARA REMIX</button><button id="vsShopCopy" class="secondary">📋 COPIAR IDEIAS</button></div><div id="vsShopAnalysis" class="viralAnalysis empty">Preencha o produto e gere as ideias.</div><p class="muted">Use somente benefícios, preços e ofertas verdadeiros. O Studio cria variações de edição; não garante visualizações ou vendas.</p></div></section>
+<section id="production" class="page hidden">
+   <div class="panel"><div class="sectionTitle"><div><h3>Novo produto</h3><p>Adicione os vídeos já prontos em cada etapa.</p></div><button id="clearAll">Limpar</button></div>
+   <label>Nome do produto<input id="product" placeholder="Ex.: Calça feminina"></label>
+   <div class="uploadGrid">
+    <label class="drop"><b>1. GANCHO</b><span>Adicione 1, 10 ou mais vídeos</span><input id="hooks" type="file" accept="video/*" multiple><em id="hooksCount">0 arquivos</em></label>
+    <label class="drop"><b>2. CORPO</b><span>Adicione 1, 10 ou mais corpos/demonstrações</span><input id="bodies" type="file" accept="video/*" multiple><em id="bodiesCount">0 arquivos</em></label>
+    <label class="drop"><b>3. CTA</b><span>Adicione 1, 10 ou mais chamadas para ação</span><input id="ctas" type="file" accept="video/*" multiple><em id="ctasCount">0 arquivos</em></label>
+   </div>
+   <div class="comboBox"><div><span>COMBINAÇÕES DISPONÍVEIS</span><strong id="comboCount">0</strong></div><div class="quantity"><button data-q="5">5</button><button data-q="10" class="selected">10</button><button data-q="20">20</button><button data-q="all">TODAS</button></div></div>
+   <div class="productionUnlimited"><b>SEM LIMITE FIXO DE 10</b><span>Você pode carregar mais de 10 Ganchos, mais de 10 Corpos e mais de 10 CTAs. A quantidade de combinações é calculada automaticamente.</span></div><div id="productionStatus" class="productionStatus hidden">
+<div class="prodTop"><div><b id="prodTitle">Preparando produção...</b><span id="prodEta">Calculando tempo...</span></div><strong id="prodPercent">0%</strong></div>
+<div class="prodBar"><i id="prodBar"></i></div><small id="prodDetail">Aguardando...</small>
+</div>
+<div class="actions"><button id="previewOne" class="secondary">▶ PRÉVIA 1 VÍDEO</button><button id="analyze" class="secondary">🛡 ANALISAR ORIGINALIDADE</button><button id="generate" class="primary">🚀 PREPARAR COMBINAÇÕES</button></div>
+   </div>
+   <div id="analysis" class="panel hidden"><div class="sectionTitle"><div><h3>🛡 Etiqueta de Originalidade</h3><p>Indicador interno de similaridade; não garante decisão de moderação do TikTok.</p></div></div><div id="analysisList"></div></div>
+  </section>
+
+  <section id="library" class="page hidden">
+<div class="helpHero"><span>📚 CENTRAL DE AJUDA</span><h2>Biblioteca Viral Studio</h2><p>Entenda cada ferramenta e descubra qual usar em cada etapa da criação.</p></div>
+<div class="helpGrid">
+<article><i>🎬</i><h3>Produção</h3><p>Envie Ganchos, Corpos e CTAs. O Studio combina os arquivos e prioriza diversidade entre os vídeos.</p></article>
+<article><i>✨</i><h3>Criar com IA</h3><p>Informe produto, benefícios, duração, estilo e quantidade. O Studio prepara roteiros e planos de cenas para TikTok Shop.</p></article>
+<article><i>🚀</i><h3>Exportação Rápida</h3><p>Área para preparar e exportar suas versões sem espalhar funções repetidas pelo menu.</p></article>
+<article><i>🧪</i><h3>Laboratório</h3><p>Teste ganchos, cenas e ângulos diferentes antes de escolher a abordagem do vídeo.</p></article>
+<article><i>🛡️</i><h3>Verificação</h3><p>Revisa sinais de promessas, urgência e outros pontos antes de postar. É preventivo, não uma aprovação oficial do TikTok.</p></article>
+<article><i>📊</i><h3>Resultados</h3><p>Mostra o que já foi preparado nesta instalação e explica como interpretar combinações e originalidade.</p></article>
+</div>
+<div class="panel helpFlow"><h3>💡 Fluxo recomendado</h3><p><b>Produto → Roteiro/Gancho → Cenas → Narração → Verificar → Exportar/Publicar.</b></p><p class="muted">Dica: descreva somente características e benefícios verdadeiros do produto. Isso melhora o roteiro e reduz afirmações enganosas.</p></div>
+<div class="panel"><h3>📁 Arquivos desta sessão</h3><p class="muted">Quando você carregar produtos na Produção, eles aparecem abaixo.</p><div id="libraryList" class="empty">Nenhum produto carregado ainda. Vá em Produção para começar.</div></div>
+</section>
+  <section id="results" class="page hidden">
+<div class="resultHero"><span>📊 PAINEL DE RESULTADOS</span><h2>Seus criativos preparados</h2><p>Esta área recebe as combinações geradas na Produção. Se estiver vazia, gere primeiro seus vídeos.</p><button class="primary goProduction">🎬 IR PARA PRODUÇÃO</button></div>
+<div class="resultExplain"><article><b>ORIGINAL</b><p>Versão priorizada para evitar repetição de pares de Gancho, Corpo e CTA.</p></article><article><b>COMBINAÇÕES</b><p>Total preparado pelo Studio na sessão atual.</p></article><article><b>PRÓXIMO PASSO</b><p>Revise, exporte e depois registre o desempenho dos vídeos que publicar.</p></article></div>
+<div class="panel"><h3>Resultados / Combinações</h3><div id="resultList" class="empty">Nenhuma combinação preparada ainda.</div></div>
+</section>
+  <section id="profile" class="page hidden">
+   <div class="profileHero panel">
+    <div class="profileIdentity"><div class="avatarWrap modernAvatar" id="profileAvatarPicker" title="Clique para alterar sua foto"><span id="profileAvatar" class="avatar">C</span><img id="profilePhoto" class="profilePhoto hidden" alt="Foto do perfil"><span class="photoButton" title="Alterar foto">📷</span><button type="button" id="removeProfilePhoto" class="avatarRemove hidden" title="Remover foto" aria-label="Remover foto">×</button><input id="profilePhotoInput" type="file" accept="image/png,image/jpeg,image/webp" hidden></div><div><span class="eyebrow">MINHA CONTA</span><h2 id="profileName">Cliente Viral Studio</h2><p id="profileEmail" class="muted">cliente@email.com</p></div></div>
+    <button id="editProfile" class="secondary">✎ EDITAR PERFIL</button>
+   </div>
+   <div class="profileGrid">
+    <div class="panel">
+      <div class="sectionTitle"><div><h3>Dados pessoais</h3><p>Informações da sua conta Viral Studio.</p></div></div>
+      <div class="infoRows">
+       <div><span>Nome</span><b id="infoName">—</b></div><div><span>E-mail</span><b id="infoEmail">—</b></div>
+       <div><span>Conta criada</span><b id="infoCreated">—</b></div><div><span>ID do cliente</span><b id="infoId">—</b></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="sectionTitle"><div><h3>Minha assinatura</h3><p>Resumo do seu acesso.</p></div><span id="profileStatus" class="tag green">● ATIVO</span></div>
+      <div class="planCard"><span>PLANO ATUAL</span><strong id="profilePlan">Mensal</strong><small id="profileRenewal">Renovação: —</small></div>
+      <button id="managePlan" class="secondary fullBtn">GERENCIAR ASSINATURA</button>
+    </div>
+    <div class="panel">
+      <div class="sectionTitle"><div><h3>Segurança</h3><p>Proteção da sua conta.</p></div></div>
+      <button id="changePassword" class="secondary fullBtn">ALTERAR SENHA</button>
+      <button id="logoutEverywhere" class="secondary fullBtn">SAIR DESTE DISPOSITIVO</button>
+    </div>
+    <div class="panel">
+      <div class="sectionTitle"><div><h3>Uso do Viral Studio</h3><p>Resumo desta instalação.</p></div></div>
+      <div class="profileStats"><div><strong id="profileVideos">0</strong><span>resultados</span></div><div><strong id="profileCombos">0</strong><span>combinações</span></div></div>
+    </div>
+   </div>
+  </section>
+  <section id="creator" class="page hidden">
+<div class="panel creatorHero"><div><span class="eyebrow">GERADOR TUDO-EM-UM</span><h2>🚀 1 produto → vários criativos</h2><p class="muted">Produto → roteiro → cenas → narração em um único fluxo.</p></div><span class="engineBadge">● LOCAL</span></div>
+<div class="creatorGrid"><div class="panel"><h3>1. Produto</h3><label>Nome<input id="gcProduct" placeholder="Ex.: Smartwatch feminino"></label><label>Foto ou vídeo<input id="gcMedia" type="file" accept="image/*,video/*"></label><div id="gcMediaPreview" class="gcPreview">Nenhum arquivo</div><label>Categoria<select id="gcCategory"><option>Automático</option><option>Moda / Roupa</option><option>Calçados</option><option>Relógio / Eletrônicos</option><option>Beleza</option><option>Casa / Cozinha</option><option>Ferramentas</option><option>Outro</option></select></label>
+<label>Benefícios reais<textarea id="gcBenefits" placeholder="Ex.: duas pulseiras, recebe chamadas..."></textarea></label>
+<label>Oferta real (opcional)<input id="gcOffer" placeholder="Ex.: cupom ativo / frete grátis — somente se for verdade"></label>
+<label>Público / situação de uso<input id="gcAudience" placeholder="Ex.: mulher que quer praticidade no dia a dia"></label></div>
+<div class="panel"><h3>2. Formato</h3><label>Estilo<select id="gcStyle"><option>UGC natural</option><option>Review</option><option>Demonstração</option><option>Unboxing</option><option>Oferta</option></select></label><label>Duração<select id="gcDuration"><option value="8">8 segundos</option><option value="15">15 segundos</option><option value="30">30 segundos</option></select></label><label>Variações<select id="gcCount"><option>1</option><option>3</option><option>5</option><option>10</option></select></label>
+<label>Gancho<select id="gcHookMode"><option>Automático</option><option>Curiosidade</option><option>Problema → solução</option><option>Demonstração</option><option>Review</option><option>Comparação</option></select></label>
+<label><input id="gcSafe" type="checkbox" checked> Revisar promessas antes de exportar</label><button id="gcCreate" class="primaryBig greenAction">✨ GERAR VARIAÇÕES DE VENDA</button></div></div>
+<div id="gcProgress" class="panel hidden"><b id="gcStatus">Preparando...</b><div class="gcBar"><i id="gcBar"></i></div></div>
+<div id="gcResult" class="panel hidden"><div class="resultHead"><div><span class="eyebrow">PROJETO PRONTO</span><h3 id="gcTitle"></h3></div><button id="gcAgain" class="secondaryBtn">↻ NOVA VARIAÇÃO</button></div><div class="resultCols"><div><h4>✍️ Variações de roteiro de venda</h4><div id="gcMainVariations" class="mainVariationList"></div><h4 class="selectedScriptTitle">Roteiro selecionado</h4><div class="scriptFormula">GANCHO até 180 + CORPO até 180 + CTA até 180</div><pre id="gcScript"></pre><div id="gcCharCount" class="char180">0/180 caracteres</div><button id="gcCopy">COPIAR</button></div><div><h4>🎬 Plano de cenas</h4><div id="gcScenes"></div></div></div><div class="voiceCard"><h4>🎙️ Narração local</h4><p id="gcVoiceText"></p><button id="gcPlay">▶ OUVIR</button> <button id="gcStop" class="secondaryBtn">■ PARAR</button></div><div class="riskPanel">
+<h4>🛡️ RISCO DE PUBLICAÇÃO</h4>
+<div id="riskBadge" class="riskBadge riskYellow"><i></i><div><b>AINDA NÃO VERIFICADO</b><small>Faça a verificação antes de exportar.</small></div></div>
+<div id="riskReasons" class="riskReasons"></div>
+<button id="riskCheck" class="riskCheckBtn">🛡️ VERIFICAR ANTES DE POSTAR</button>
+<p class="riskFoot">Este é um verificador preventivo do Viral Studio, não uma decisão do TikTok. Verde significa que não detectamos os riscos verificados; amarelo indica pontos para revisar; vermelho indica sinal forte de possível violação e recomendamos não publicar antes de corrigir.</p>
+</div>
+<div class="exportTools">
+<h4>⚡ Exportação rápida</h4>
+<p>Se você enviou um vídeo do produto, gere uma versão vertical com título, CTA e identidade do Viral Studio diretamente no navegador.</p>
+
+<div class="variationStudio">
+ <h4>🎙️ VARIAÇÕES DE ROTEIRO / ÁUDIO</h4>
+ <p>Crie versões novas para o mesmo vídeo. O vídeo visual é mantido; muda somente a fala/roteiro.</p>
+ <div class="variationControls">
+  <label>Quantidade<select id="gcAudioVars"><option>3</option><option>5</option><option selected>10</option></select></label>
+  <button id="gcGenerateAudioVars">✨ GERAR VARIAÇÕES</button>
+ </div>
+ <div id="gcAudioVarList" class="audioVarList"></div>
+ <div class="voiceNote">A voz do navegador serve como prévia. Para colocar uma nova fala realmente dentro do arquivo final, é necessário uma trilha de áudio gravável/TTS. Esta versão permite também importar o áudio novo (WAV/MP3/WebM) e substituir a fala do vídeo.</div>
+ <label class="audioImport">🎤 Áudio novo para o vídeo<input id="gcNewVoiceFile" type="file" accept="audio/*"></label>
+ <label>Volume da nova voz <input id="gcNewVoiceVolume" type="range" min="0" max="1" step=".05" value="1"><b id="gcNewVoiceVolumeLabel">100%</b></label>
+ <button id="gcRenderNewVoice">🎬 CRIAR VÍDEO COM NOVA FALA</button>
+
+
+<section id="salesLabPage" class="page hidden toolStandalone">
+<div class="labHead"><div><b>🔥 LABORATÓRIO DE VENDAS</b><small>Gancho forte + cenas + variações + aprendizado dos seus resultados</small></div><span>V4.2</span></div>
+<div class="labTabs"><button data-lab="hooks" class="active">🪝 GANCHOS</button><button data-lab="winner">🧠 VÍDEO CAMPEÃO</button><button data-lab="scenes">🎬 CENAS</button><button data-lab="results">📊 RESULTADOS</button></div>
+
+<div class="labPane" data-lab-pane="hooks">
+<label>Produto<input id="labProduct" placeholder="Ex.: blazer feminino"></label>
+<label>Fatos/benefícios comprovados<textarea id="labFacts" placeholder="Informe somente características reais do produto"></textarea></label>
+<button id="makeHooks">GERAR 20 GANCHOS →</button>
+<div id="hookOutput" class="hookOutput"></div>
+</div>
+
+<div class="labPane hidden" data-lab-pane="winner">
+<h3>🧠 Analisar Vídeo Campeão</h3><p class="labHint">Use um vídeo seu ou uma referência autorizada. O Studio organiza a estrutura; não copia a fala.</p>
+<input id="winnerVideo" type="file" accept="video/*"><video id="winnerPreview" controls class="winnerPreview hidden"></video>
+<div class="winnerGrid"><label>0–3s • Gancho<textarea id="winHook"></textarea></label><label>3–10s • Mensagem/Demonstração<textarea id="winBody"></textarea></label><label>Final • CTA<textarea id="winCta"></textarea></label><label>O que testar diferente<textarea id="winTest"></textarea></label></div>
+<button id="winnerVariations">CRIAR 10 ÂNGULOS PARA TESTE →</button><div id="winnerOut" class="hookOutput"></div>
+</div>
+
+<div class="labPane hidden" data-lab-pane="scenes">
+<h3>🎬 Gerador de Cenas</h3><div id="sceneCards" class="sceneCards">
+<div><b>CENA 1 • 0–3s</b><span>Produto visível + ação + gancho falado + texto curto.</span></div>
+<div><b>CENA 2 • 3–7s</b><span>Problema/desejo e contexto real.</span></div>
+<div><b>CENA 3 • 7–12s</b><span>Demonstração em close + outro ângulo.</span></div>
+<div><b>CENA 4 • 12–16s</b><span>Benefício comprovado/prova visual.</span></div>
+<div><b>CENA 5 • FINAL</b><span>CTA claro; promoção somente se confirmada.</span></div>
+</div><button id="copyScenePrompt">GERAR PROMPT DAS CENAS →</button><textarea id="scenePrompt" placeholder="O prompt aparecerá aqui"></textarea>
+</div>
+
+<div class="labPane hidden" data-lab-pane="results">
+<h3>📊 Aprender com seus resultados</h3><div class="resultInputs"><input id="resName" placeholder="Versão A"><input id="resViews" type="number" placeholder="Views"><input id="resClicks" type="number" placeholder="Cliques"><input id="resSales" type="number" placeholder="Vendas"><button id="addResult">ADICIONAR</button></div>
+<div id="resultTable"></div><p class="labHint">O Studio compara somente os números que você informar. Mais views não significa automaticamente mais vendas.</p>
+</div>
+<p class="labFoot">Estrutura inspirada em boas práticas públicas de vídeos compráveis: gancho imediato, demonstração clara, benefícios reais e CTA. Não há garantia de vendas.</p>
+</section><section id="wizardPage" class="page hidden toolStandalone">
+<div class="wizTitle"><div><b>✨ ME AJUDE A CRIAR</b><small>Monte um vídeo de produto passo a passo, mesmo sem conhecer as IAs.</small></div><span>V4.1</span></div>
+<div class="wizProgress"><i class="on">1</i><b></b><i>2</i><b></b><i>3</i><b></b><i>4</i></div>
+<div class="wizPage" data-wiz-page="1">
+<h3>O que você quer criar?</h3>
+<div class="wizChoices"><button data-goal="produto">🛍️ Vídeo para vender produto</button><button data-goal="avatar">👤 Avatar apresentando</button><button data-goal="ugc">📱 UGC ultra-realista</button><button data-goal="imagem">🖼️ Animar foto do produto</button></div>
+<label>Produto / ideia<input id="wizProduct" placeholder="Ex.: blazer feminino de alfaiataria"></label>
+<label>Informações verdadeiras do produto<textarea id="wizFacts" placeholder="Tecido, tamanhos, cores, funções, itens inclusos..."></textarea></label>
+<button class="wizNext" data-next="2">CONTINUAR →</button>
+</div>
+<div class="wizPage hidden" data-wiz-page="2">
+<h3>Escolha o estilo</h3>
+<div class="wizChoices"><button data-style="realista">🎥 Ultra-realista</button><button data-style="pov">🤳 POV / mãos</button><button data-style="influencer">✨ Influencer</button><button data-style="cinema">🎬 Cinematográfico</button></div>
+<label>Formato<select id="wizFormat"><option>Vertical 9:16 — TikTok/Reels</option><option>Quadrado 1:1</option><option>Horizontal 16:9</option></select></label>
+<label>Duração<select id="wizDuration"><option>8 segundos</option><option>15 segundos</option><option>30 segundos</option></select></label>
+<div class="wizNav"><button data-back="1">← VOLTAR</button><button data-next="3">CONTINUAR →</button></div>
+</div>
+<div class="wizPage hidden" data-wiz-page="3">
+<h3>Seu kit de criação</h3>
+<div class="wizOutput"><label>GANCHO<textarea id="wizHook"></textarea></label><label>DESENVOLVIMENTO<textarea id="wizBody"></textarea></label><label>CTA<textarea id="wizCTA"></textarea></label><label>PROMPT PARA VÍDEO<textarea id="wizPrompt"></textarea></label></div>
+<div class="wizTools"><a href="https://labs.google/fx/tools/flow" target="_blank">🎬 GERAR NO FLOW</a><a href="https://firefly.adobe.com/" target="_blank">🔥 TENTAR NO FIREFLY</a><a href="https://chatgpt.com/" target="_blank">✦ ABRIR CHATGPT</a></div>
+<div class="wizNav"><button data-back="2">← VOLTAR</button><button data-next="4">ÁUDIO E FINALIZAÇÃO →</button></div>
+</div>
+<div class="wizPage hidden" data-wiz-page="4">
+<h3>Finalize e publique</h3>
+<div class="wizTools"><a href="https://elevenlabs.io/" target="_blank">🔊 ELEVENLABS</a><a href="https://www.minimax.io/audio" target="_blank">🎙 MINIMAX AUDIO</a><button id="wizCheck">🛡 VERIFICAR ROTEIRO</button><a href="https://www.tiktok.com/upload" target="_blank">♪ ABRIR TIKTOK</a></div>
+<div id="wizStatus" class="wizStatus">Antes de publicar, confira se fala, preço, benefícios e imagens correspondem ao produto real.</div>
+<button data-back="3">← VOLTAR</button>
+</div>
+<p class="wizFoot">Ferramentas externas mantêm seus próprios limites, créditos e regras. O Studio não armazena suas senhas.</p>
+</section><section id="aiCentralPage" class="page hidden toolStandalone">
+<div class="aiHubHead"><b>⚡ CENTRAL DE CRIAÇÃO IA</b><small>Escolha o que quer fazer. O Viral Studio leva você direto à ferramenta.</small></div>
+<div class="aiQuick">
+<button data-filter-ai="video" class="active">🎬 GERAR VÍDEO</button><button data-filter-ai="audio">🎙 GERAR ÁUDIO</button><button data-filter-ai="roteiro">✍️ ROTEIRO/IMAGEM</button><button data-filter-ai="publicar">📲 PUBLICAR</button><button data-filter-ai="all">TODAS</button>
+</div>
+<div class="aiHubGrid">
+<a class="aiCard" data-ai-cat="video" href="https://labs.google/fx/tools/flow" target="_blank"><b>🎬 Google Flow</b><span>Veo 3.1 • texto/imagem para vídeo</span><mark>GRÁTIS • créditos diários</mark><em>ABRIR →</em></a>
+<a class="aiCard" data-ai-cat="video" href="https://firefly.adobe.com/" target="_blank"><b>🔥 Adobe Firefly</b><span>Vídeo, imagem e áudio</span><mark>GRÁTIS • limite diário</mark><em>ABRIR →</em></a>
+<a class="aiCard" data-ai-cat="video" href="https://app.runwayml.com/" target="_blank"><b>🎥 Runway</b><span>Gerar/testar vídeos e efeitos</span><mark>GRÁTIS • créditos iniciais</mark><em>ABRIR →</em></a>
+<a class="aiCard" data-ai-cat="video" href="https://pika.art/" target="_blank"><b>✨ Pika</b><span>Efeitos e geração de vídeo</span><mark>GRÁTIS • uso comercial pode exigir plano</mark><em>ABRIR →</em></a>
+<a class="aiCard" data-ai-cat="video" href="https://www.minimax.io/" target="_blank"><b>🎞 MiniMax</b><span>Ferramentas de criação IA</span><mark>ACESSO/CRÉDITOS PODEM VARIAR</mark><em>ABRIR →</em></a>
+<a class="aiCard" data-ai-cat="audio" href="https://elevenlabs.io/" target="_blank"><b>🔊 ElevenLabs</b><span>Voz e narração</span><mark>PLANO GRÁTIS • limites</mark><em>ABRIR →</em></a>
+<a class="aiCard" data-ai-cat="audio" href="https://www.minimax.io/audio" target="_blank"><b>🎙 MiniMax Audio</b><span>Texto para fala e vozes</span><mark>TESTE/CRÉDITOS PODEM VARIAR</mark><em>ABRIR →</em></a>
+<a class="aiCard" data-ai-cat="roteiro" href="https://chatgpt.com/" target="_blank"><b>✦ ChatGPT</b><span>Roteiro, prompts, ideias e imagens</span><mark>ACESSO GRÁTIS DISPONÍVEL</mark><em>ABRIR →</em></a>
+<a class="aiCard" data-ai-cat="publicar" href="https://www.tiktok.com/upload" target="_blank"><b>♪ TikTok</b><span>Abrir upload/publicação</span><mark>PUBLICAR</mark><em>ABRIR →</em></a>
+</div>
+<div class="aiHow"><b>FLUXO FÁCIL</b><span>1 Produto → 2 Roteiro → 3 Vídeo → 4 Áudio → 5 Verificar → 6 TikTok</span></div>
+<p class="aiHubNote">“Grátis” significa acesso gratuito com os limites definidos por cada serviço. Créditos, recursos e licença comercial podem mudar. O Viral Studio não cobra nem altera limites de terceiros.</p>
+</section><section id="flowV3Page" class="page hidden toolStandalone"><div class="divMaxBox"><b>♻️ DIVERSIDADE REAL: MÁXIMA</b><span>O gerador agora monta a fila balanceada antes de renderizar. Evita repetir Gancho+Corpo, Gancho+CTA e Corpo+CTA enquanto houver combinações melhores disponíveis — inclusive em lotes grandes.</span></div>
+ <div class="v4Head">
+  <div><b>VIRAL STUDIO V4 • CREATOR FLOW</b><small>Produto → Roteiro → Cenas → Gerar → Verificar → Publicar</small></div>
+  <span class="tag green">V4</span>
+ </div>
+ <div class="v4Steps">
+  <button data-v4step="produto" class="active">1 PRODUTO</button><button data-v4step="roteiro">2 ROTEIRO</button>
+  <button data-v4step="cenas">3 CENAS</button><button data-v4step="gerar">4 GERAR</button>
+  <button data-v4step="verificar">5 VERIFICAR</button><button data-v4step="publicar">6 PUBLICAR</button>
+ </div>
+ <div class="v4Grid">
+  <label>Nome do produto<input id="v4Product" placeholder="Ex.: Calça pantalona"></label>
+  <label>Características comprovadas<textarea id="v4Facts" placeholder="Material, tamanhos, cores, itens inclusos, funções reais..."></textarea></label>
+  <label>Preço/promoção confirmados<input id="v4Price" placeholder="Opcional. Só informe se estiver confirmado."></label>
+  <label>Fonte das informações<textarea id="v4Evidence" placeholder="Cole informações da página do produto ou suas anotações verificadas."></textarea></label>
+ </div>
+ <div class="v4Script">
+  <b>ESTRUTURA DO ROTEIRO</b>
+  <div class="v4Five">
+   <textarea id="v4Hook" placeholder="GANCHO"></textarea><textarea id="v4Dev" placeholder="DESENVOLVIMENTO"></textarea>
+   <textarea id="v4Proof" placeholder="PROVA/DEMONSTRAÇÃO"></textarea><textarea id="v4Obj" placeholder="OBJEÇÃO"></textarea>
+   <textarea id="v4Cta" placeholder="CTA"></textarea>
+  </div>
+ </div>
+ <div class="v4Actions">
+   <button id="v4UseScript">USAR ROTEIRO NO GERADOR</button>
+   <button id="v4Check">🛡 VERIFICAR ANTES DE POSTAR</button>
+   <button id="v4TikTok">♪ POSTAR NO TIKTOK</button>
+ </div>
+ <div id="v4CheckResult" class="v4CheckResult hidden"></div>
+ <p class="v4Note">A verificação é preventiva: aponta sinais para revisão, mas não garante aprovação nem ausência de restrições.</p>
+</section>
+<div class="v318Flow">
+ <div class="v318Title"><b>🎬 FLUXO CRIAR VÍDEO V3.18</b><span>Vídeo original → Gancho + Corpo + CTA → nova fala → novo vídeo</span></div>
+ <div class="v318Steps">
+  <span>1 Vídeo</span><span>2 Roteiro</span><span>3 Fala</span><span>4 Render</span><span>5 TikTok</span>
+ </div>
+ <div class="v318Tools">
+   <label>Quantidade de roteiros
+    <select id="v318Qty"><option>1</option><option>3</option><option>5</option><option selected>10</option></select>
+   </label>
+   <label>Variação
+    <select id="v318Variation"><option value="all">Roteiro completo</option><option value="hook">Só Gancho</option><option value="body">Só Corpo</option><option value="cta">Só CTA</option></select>
+   </label>
+   <label>Legenda no vídeo
+    <select id="v318Subs"><option value="off">Desligada</option><option value="phrase">Frase por frase</option><option value="word">Palavra por palavra</option></select>
+   </label>
+ </div>
+ <div class="v318QueueHead"><b>Fila de versões</b><button id="v318AddSelected">＋ ADICIONAR ROTEIRO SELECIONADO</button></div>
+ <div id="v318Queue" class="v318Queue"><small>Nenhuma versão adicionada.</small></div>
+ <div class="v318QueueActions">
+   <button id="v318Next">🎬 GERAR PRÓXIMA VERSÃO</button>
+   <button id="v318Clear" class="secondary">LIMPAR FILA</button>
+ </div>
+ <p class="v318Hint">A fila permite concluir o roteiro 1 e depois gerar o 2, 3, 4... sem perder os anteriores. A geração de áudio exportável depende do motor de voz configurado; a V3.18 não finge que a prévia de voz do navegador é um arquivo de áudio.</p>
+</div>
+<div class="cvProPanel">
+ <h3>⚡ Editor rápido do roteiro</h3>
+ <p>Antes de renderizar, ajuste a fala e crie novas versões sem começar do zero.</p>
+ <div class="cvProBtns">
+  <button id="cvSwapHook">🔥 TROCAR SÓ GANCHO</button>
+  <button id="cvSwapBody">📝 TROCAR SÓ CORPO</button>
+  <button id="cvSwapCta">🛒 TROCAR SÓ CTA</button>
+  <button id="cvSwapAll">✨ NOVO ROTEIRO</button>
+ </div>
+ <label>Legenda no vídeo <select id="cvSubtitleMode"><option value="off">Desligada</option><option value="phrase">Frase por frase</option><option value="word">Palavra por palavra</option></select></label>
+ <label>Velocidade da fala <select id="cvSpeechSpeed"><option value=".9">Mais lenta</option><option value="1" selected>Normal</option><option value="1.15">Mais rápida</option></select></label>
+</div>
+
+
+<div class="vsReliableReplace">
+ <h4>🎧 TROCAR ÁUDIO DO VÍDEO — CORRIGIDO</h4>
+ <p>Use o áudio novo que você gerou. O áudio original será removido do arquivo final.</p>
+ <input id="vsNewAudio312" type="file" accept="audio/*">
+ <button id="vsReplace312">🎬 GERAR NOVO VÍDEO COM ESTE ÁUDIO</button>
+ <div id="vsReplaceStatus312"></div>
+ <video id="vsResult312" controls playsinline class="hidden"></video>
+ <a id="vsDownload312" class="hidden" download="viral-studio-video-novo.webm">⬇ BAIXAR NOVO VÍDEO</a>
+</div>
+<div class="autoScriptVideo">
+ <h4>✨ ROTEIRO → VÍDEO PRONTO</h4>
+ <p>Escolha uma variação acima e transforme o texto em fala usando uma voz instalada no seu navegador/computador.</p>
+ <label>Voz<select id="gcAutoVoice"></select></label>
+ <label>Velocidade <input id="gcAutoRate" type="range" min=".75" max="1.35" value="1" step=".05"><b id="gcAutoRateLabel">1.00x</b></label>
+ <button id="gcAutoMakeVideo">🎬 USAR ESTE ROTEIRO NO VÍDEO</button>
+ <small>Na primeira vez, o Chrome pedirá para compartilhar esta guia com o áudio da guia. Marque “Compartilhar áudio da guia”. Isso permite gravar gratuitamente a voz do navegador no vídeo.</small>
+</div>
+
+</div>
+
+<div class="audioMixer">
+<label><input id="gcKeepAudio" type="checkbox" checked> 🔊 Manter áudio original</label>
+<label>Volume original <input id="gcAudioVolume" type="range" min="0" max="1" value="1" step="0.05"><b id="gcAudioVolumeLabel">100%</b></label>
+</div>
+<div class="exportBtns"><button id="gcRender">🎬 RENDERIZAR VÍDEO + ÁUDIO</button><button id="gcPreviewSource" class="secondaryBtn">▶ VER ORIGINAL</button></div>
+<div id="gcRenderProgress" class="hidden"><div class="gcBar"><i id="gcRenderBar"></i></div><span id="gcRenderStatus">Preparando...</span></div>
+<video id="gcFinalVideo" class="finalVideo hidden" controls playsinline></video>
+<a id="gcDownload" class="downloadBtn hidden" download="viral-studio-video.webm">⬇ BAIXAR VÍDEO</a>
+</div>
+<div class="exportNote">Renderização rápida usa o vídeo enviado e funciona localmente. Geração de cenas totalmente novas por IA continua exigindo um modelo generativo real.</div></div>
+</section>
+  <section id="quickExport" class="page hidden"><div class="pageHead"><div><h1>🚀 Exportação Rápida</h1><p>Atalho para preparar e exportar seus criativos.</p></div></div><button class="primaryBig" data-open-contenthub="export">ABRIR EXPORTAÇÃO RÁPIDA →</button></section>
+<section id="quickScriptPage" class="page hidden"><div class="pageHead"><div><h1>📝 Editor Rápido de Roteiro</h1><p>Edite Gancho, Corpo e CTA sem poluir a tela Criar Vídeo.</p></div></div><button class="primaryBig" data-open-contenthub="script">ABRIR EDITOR →</button></section>
+<section id="swapVideoPage" class="page hidden"><div class="pageHead"><div><h1>🎞️ Trocar Vídeos</h1><p>Acesse a ferramenta de substituição de vídeo.</p></div></div><button class="primaryBig" data-open-contenthub="video">ABRIR TROCA DE VÍDEOS →</button></section>
+<section id="swapAudioPage" class="page hidden"><div class="pageHead"><div><h1>🎚️ Trocar Áudios</h1><p>Acesse a ferramenta de substituição de áudio.</p></div></div><button class="primaryBig" data-open-contenthub="audio">ABRIR TROCA DE ÁUDIO →</button></section>
+<section id="readyVideosPage" class="page hidden"><div class="pageHead"><div><h1>📁 Roteiros e Vídeos Prontos</h1><p>Organize e acesse seus materiais prontos.</p></div></div><button class="primaryBig" data-open-contenthub="ready">ABRIR BIBLIOTECA DE CONTEÚDO →</button></section>
+<section id="viralai" class="page hidden">
+   <div class="aiHeader panel">
+    <div><span class="eyebrow">✨ CENTRAL CRIATIVA PRO</span><h2>Viral IA Studio</h2><p class="muted">Roteiro de venda, imagem, narração e prompts de vídeo em uma única central.</p></div>
+    <div class="creditBox"><span>CRÉDITOS IA</span><strong id="aiCredits">500</strong><small>demonstrativos</small></div>
+   </div>
+   <div id="aiLocked" class="aiLocked hidden panel">
+    <div class="lockIcon">🔒</div><h2>Viral IA é exclusivo do PRO Anual</h2>
+    <p>Faça upgrade para acessar Roteiros IA, Imagens IA, Voz IA e Vídeo/Prompts.</p>
+    <div class="upgradePrice"><span>PRO ANUAL</span><strong>R$ 297,90</strong><small>/ano</small></div>
+    <button id="upgradeAnnual">DESBLOQUEAR VIRAL IA</button>
+   </div>
+   <div id="aiContent">
+    <div class="viralFeatureCards">
+<article data-open-ai="script"><div class="vfIcon">✍️</div><b>Roteiro de Venda</b><span>Gancho + demonstração + CTA</span></article>
+<article data-open-ai="image"><div class="vfIcon">🖼️</div><b>Imagem</b><span>Prompt visual + referência</span></article>
+<article data-open-ai="voice"><div class="vfIcon">🎙️</div><b>Voz</b><span>Narração e prévia local</span></article>
+<article data-open-ai="video"><div class="vfIcon">🎬</div><b>Vídeo / Prompt</b><span>Cenas prontas para geradores</span></article>
+</div>
+<div class="aiTruthNote">💡 Para TikTok Shop: use características verdadeiras do produto e mostre-o claramente em uso. O Viral IA ajuda na criação; geração externa de imagem/vídeo continua dependendo do gerador escolhido.</div>
+<div class="aiTabs">
+      <button class="aiTab active" data-ai="script">✍️ Roteiro</button><button class="aiTab" data-ai="image">🎨 Imagem</button>
+      <button class="aiTab" data-ai="voice">🎙️ Voz</button><button class="aiTab" data-ai="video">🎬 Vídeo / Prompt</button>
+    </div>
+    <div class="aiWorkspace panel">
+      <div id="ai-script" class="aiPane">
+       <span class="eyebrow">ROTEIRO IA</span><h3>Crie Gancho + Corpo + CTA</h3>
+       <label>Produto<input id="scriptProduct" placeholder="Ex.: calça feminina de alfaiataria"></label>
+       <label>Objetivo<select id="scriptGoal"><option>Vender no TikTok Shop</option><option>Apresentar produto</option><option>Gerar curiosidade</option></select></label>
+       <label>Detalhes<textarea id="scriptDetails" placeholder="Características, benefícios, público, oferta..."></textarea></label>
+       <button class="aiGenerate" data-kind="script">✨ GERAR ROTEIRO</button><div id="scriptOutput" class="aiOutput">Seu roteiro aparecerá aqui.</div>
+      </div>
+      <div id="ai-image" class="aiPane hidden">
+       <span class="eyebrow">IMAGEM IA</span><h3>Prepare seu criativo visual</h3>
+       <label>Imagem de referência (opcional)<input id="imageReference" type="file" accept="image/*"></label><div id="imageReferencePreview" class="refPreview"></div><label>Descreva a imagem<textarea id="imagePrompt" placeholder="Ex.: modelo mostrando a calça em um closet elegante, vertical 9:16..."></textarea></label>
+       <label>Formato<select><option>Vertical 9:16</option><option>Quadrado 1:1</option><option>Horizontal 16:9</option></select></label>
+       <button class="aiGenerate" data-kind="image">✨ PREPARAR PROMPT DE IMAGEM</button>
+<div class="aiExternalRow"><button type="button" data-url="https://chatgpt.com/">↗ ABRIR CHATGPT</button><button type="button" data-url="https://firefly.adobe.com/">↗ ABRIR FIREFLY</button></div><div id="imageOutput" class="aiOutput visualOutput">A prévia da imagem aparecerá aqui.</div>
+      </div>
+      <div id="ai-voice" class="aiPane hidden">
+       <span class="eyebrow">VOZ IA</span><h3>Transforme seu texto em narração</h3>
+       <label>Texto<textarea id="voiceText" placeholder="Cole aqui a fala do seu vídeo..."></textarea></label>
+       <label>Voz disponível no dispositivo<select id="voiceSelect"></select></label>
+       <div class="voiceRow"><label>Velocidade<input id="voiceRate" type="range" min="0.7" max="1.4" step="0.1" value="1"></label><label>Tom<input id="voicePitch" type="range" min="0.7" max="1.3" step="0.1" value="1"></label></div>
+       <button class="aiGenerate" data-kind="voice">🎙️ PREPARAR VOZ</button>
+       <div id="voiceOutput" class="aiOutput">Digite o texto e prepare a voz.</div>
+       <div class="voiceActions"><button id="playVoice">▶ OUVIR</button><button id="stopVoice" class="secondaryBtn">■ PARAR</button></div>
+      </div>
+      <div id="ai-video" class="aiPane hidden">
+       <span class="eyebrow">VÍDEO / PROMPT IA</span><h3>Crie prompts prontos para gerar cenas</h3>
+       <label>Produto ou cena<textarea id="videoIdea" placeholder="Ex.: influencer mostrando uma bolsa feminina em uma loja elegante..."></textarea></label>
+       <label>Duração<select><option>8 segundos</option><option>15 segundos</option><option>30 segundos</option></select></label>
+       <button class="aiGenerate" data-kind="video">🎬 GERAR PROMPT DE CENAS</button><div class="aiExternalRow"><button type="button" data-url="https://labs.google/fx/tools/flow">↗ ABRIR FLOW</button><button type="button" data-url="https://chatgpt.com/">↗ ABRIR CHATGPT</button></div><div id="videoOutput" class="aiOutput">Seu prompt de vídeo aparecerá aqui.</div>
+      </div>
+    </div>
+   </div>
+  </section>
+  <section id="shopcheck" class="page hidden">
+   <div class="panel checkerHero"><span class="eyebrow">PRÉ-PUBLICAÇÃO</span><h2>📝 Verificação TikTok Shop</h2>
+   <p class="muted">Checklist interno para melhorar qualidade e identificar sinais de risco antes de publicar. Não garante aprovação pelo TikTok.</p></div>
+   <div class="panel checker">
+    <h3>Analise seu criativo</h3>
+    <label>Roteiro / fala do vídeo<textarea id="checkText" placeholder="Cole aqui o roteiro ou a fala que será usada no vídeo..."></textarea></label>
+    <div class="checkGrid">
+     <label><input type="checkbox" id="cProduct"> O produto aparece claramente no vídeo</label>
+     <label><input type="checkbox" id="cDemo"> Existe demonstração/uso real do produto</label>
+     <label><input type="checkbox" id="cMatch"> O produto mostrado corresponde ao anúncio</label>
+     <label><input type="checkbox" id="cRights"> Tenho direito/autorização para usar os materiais</label>
+     <label><input type="checkbox" id="cAi"> Conteúdo com IA não inventa características/resultados</label>
+     <label><input type="checkbox" id="cCta"> Existe CTA claro no final</label>
+    </div>
+    <button id="runCheck">🛡 ANALISAR ANTES DE PUBLICAR</button>
+    <div id="checkResult" class="checkResult hidden"></div>
+   </div>
+  </section>
+  <section id="admin" class="page hidden"><div class="panel"><h3>♛ Painel administrativo</h3><div class="cards"><article><b>Seu acesso</b><strong>ADMIN</strong><span>acesso total</span></article><article><b>Autenticação</b><strong>ATIVA</strong><span>Supabase</span></article><article><b>Assinaturas</b><strong>SEGURAS</strong><span>validação no banco</span></article></div><p class="muted">A gestão comercial de clientes será ligada ao pagamento na próxima etapa. Nenhum cliente inativo entra no Studio.</p></div></section>
+ 
+<section id="contentHub" class="page hidden">
+ <div class="pageHead"><div><h2>🧠 Central de Conteúdo</h2><p>Ferramentas próprias do Viral Studio para criar conteúdo de venda e postagem.</p></div></div>
+ <div class="hubGrid">
+  <button class="hubCard active" data-tool="supremo">🚀<b>Venda Supremo</b><small>Ideia completa para vender produto</small></button>
+  <button class="hubCard" data-tool="reels">🎬<b>Mestre dos Reels</b><small>Roteiro curto para Reels/TikTok</small></button>
+  <button class="hubCard" data-tool="express">⚡<b>Copy Express</b><small>Gancho + corpo + CTA em até 180</small></button>
+  <button class="hubCard" data-tool="bio">👤<b>Bio Magnética</b><small>Bio curta para perfil</small></button>
+  <button class="hubCard" data-tool="dance">💃<b>Ideias de Movimento</b><small>Cenas e movimentos para vídeo</small></button>
+  <button class="hubCard" data-tool="copy">✍️<b>Copy de Produto</b><small>Texto de venda em variações</small></button>
+  <button class="hubCard" data-tool="finds">🛍️<b>Achadinhos</b><small>Formato descoberta/achado</small></button>
+  <button class="hubCard" data-tool="image">📸<b>Imagem Ultrarrrealista</b><small>Prompt profissional com referência</small></button>
+ </div>
+ <div class="hubWork">
+  <h3 id="hubTitle">🚀 Venda Supremo</h3>
+  <div class="formGrid">
+   <label>Produto<input id="hubProduct" placeholder="Ex.: calça feminina de alfaiataria"></label>
+   <label>Categoria<select id="hubCategory"><option>Moda</option><option>Calçados</option><option>Eletrônicos</option><option>Beleza</option><option>Casa/Cozinha</option><option>Ferramentas</option><option>Outro</option></select></label>
+   <label class="wide">Benefícios / detalhes<textarea id="hubBenefits" placeholder="Informe somente características verdadeiras do produto"></textarea></label>
+   <label>Público<input id="hubAudience" placeholder="Ex.: mulheres que gostam de looks elegantes"></label>
+   <label>Tom<select id="hubTone"><option>Natural</option><option>Curiosidade</option><option>Demonstração</option><option>Review</option><option>Oferta</option></select></label>
+  </div>
+  <div id="hubImageFields" class="hidden"><label>Descrição visual / cenário<textarea id="hubScene" placeholder="Ex.: estúdio elegante, iluminação natural, produto em destaque"></textarea></label></div>
+  <button id="hubGenerate" class="primaryBtn">✨ GERAR CONTEÚDO</button>
+  <div id="hubOutputWrap" class="hubOutput hidden"><div class="hubOutputTop"><b>RESULTADO</b><span id="hubCount"></span></div><pre id="hubOutput"></pre><div class="exportBtns"><button id="hubCopy">📋 COPIAR</button><button id="hubVariation">🔄 NOVA VARIAÇÃO</button></div></div>
+ </div>
+</section>
+
+
+<section id="publish" class="page hidden">
+ <div class="pageHead"><div><h1>🎵 Publicar</h1><p>Prepare legenda e hashtags, baixe seu vídeo e abra o TikTok. Sem conexão de API nesta fase.</p></div><span class="badge">GRÁTIS</span></div>
+ <div class="ttGrid">
+  <div class="card"><h3>1. Vídeo pronto</h3><input id="pubVideo" type="file" accept="video/*"><video id="pubPreview" controls playsinline class="hidden"></video><p class="muted">O arquivo fica no seu dispositivo; esta tela não envia o vídeo automaticamente.</p></div>
+  <div class="card"><h3>2. Legenda</h3><label>Produto<input id="pubProduct" placeholder="Ex.: blazer feminino"></label><label>Benefício real<input id="pubBenefit" placeholder="Ex.: tecido leve e caimento estruturado"></label><textarea id="pubCaption" maxlength="2200" placeholder="Sua legenda aparecerá aqui"></textarea><div class="ttActions"><button id="pubGenCaption">✨ GERAR LEGENDA</button><button id="pubGenTags"># GERAR HASHTAGS</button><button id="pubCopy">📋 COPIAR</button></div></div>
+ </div>
+ <div class="ttPublish"><button id="pubOpenTikTok" class="primaryBig">♪ ABRIR TIKTOK PARA PUBLICAR</button><p>Publicação manual: você escolhe o arquivo no TikTok e confirma a postagem. A integração oficial direta fica reservada para uma versão futura.</p></div>
+</section>
+</main>
+</div><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="app.js?v=490-supabase-pair-local-lite"></script>
+
+<script id="vsMotorHelpScript">
+(()=>{
+  const modal=document.getElementById('vsMotorTutorialModal');
+  const open=document.getElementById('vsMotorTutorialBtn');
+  const close=document.getElementById('vsMotorTutorialClose');
+  const video=document.getElementById('vsMotorTutorialVideo');
+  if(!modal||!open||!close) return;
+  const shut=()=>{ modal.classList.add('hidden'); if(video) video.pause(); document.body.classList.remove('vsModalOpen'); };
+  open.addEventListener('click',()=>{ modal.classList.remove('hidden'); document.body.classList.add('vsModalOpen'); if(video){video.currentTime=0; video.play().catch(()=>{});} });
+  close.addEventListener('click',shut);
+  modal.addEventListener('click',e=>{if(e.target===modal) shut();});
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!modal.classList.contains('hidden')) shut();});
+})();
+</script>
+</body></html><style id="v478-eye-smaller">
+/* V4.78 — olho da senha menor e discreto */
+.passwordField input{padding-right:54px!important}
+.passwordToggle{
+  right:14px!important;
+  top:50%!important;
+  transform:translateY(-50%)!important;
+  width:34px!important;
+  height:34px!important;
+  min-width:34px!important;
+  min-height:34px!important;
+  padding:0!important;
+  border-radius:10px!important;
+  border:0!important;
+  background:transparent!important;
+  box-shadow:none!important;
+  font-size:16px!important;
+  line-height:34px!important;
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+}
+.passwordToggle:active{transform:translateY(-50%) scale(.92)!important}
+</style>

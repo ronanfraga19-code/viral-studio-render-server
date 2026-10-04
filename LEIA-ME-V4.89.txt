@@ -1,0 +1,1 @@
+Viral Studio V4.89 — Motor Híbrido + Histórico Persistente. AUTO usa Motor PC quando disponível e Motor Local quando não houver PC. Vídeos concluídos são salvos em IndexedDB e reaproveitados para evitar geração duplicada.
