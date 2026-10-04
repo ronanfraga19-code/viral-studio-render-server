@@ -662,7 +662,7 @@ app.get('/ai-real/status',async(_q,res)=>{
   const provider=REAL_AI_KEY_VALID?await pollinationsKeyCheck():{ok:false,status:0,reason:'not_configured'};
   const configured=REAL_AI_KEY_VALID&&provider.ok;
   const message=configured?'IA Real pronta e chave aceita pelo provedor':provider.status===401?'A Pollinations rejeitou a chave configurada no Render':REAL_AI_KEY_TYPE==='publishable'?'A chave configurada é pk_. Use uma chave secreta sk_ no backend.':REAL_AI_KEY_TYPE==='missing'?'POLLINATIONS_API_KEY não foi definida no Render.':'Não consegui validar a chave agora.';
-  res.json({ok:true,version:'10.5',mode:'mobile-upload-ai-real',configured,keyPresent:Boolean(REAL_AI_KEY),keyType:REAL_AI_KEY_TYPE,providerAuth:{ok:provider.ok,status:provider.status,reason:provider.reason},message,videoModel:REAL_AI_VIDEO_MODEL,visionModel:REAL_AI_VISION_MODEL,originalFramesReused:false,audio:'ambient-default',audioModes:['ambient','silent','vendedora'],mobileReferenceFrames:true,downloadRoute:'/ai-real/jobs/:id/file?download=1'});
+  res.json({ok:true,version:'10.6',mode:'mobile-upload-ai-real',configured,keyPresent:Boolean(REAL_AI_KEY),keyType:REAL_AI_KEY_TYPE,providerAuth:{ok:provider.ok,status:provider.status,reason:provider.reason},message,videoModel:REAL_AI_VIDEO_MODEL,visionModel:REAL_AI_VISION_MODEL,originalFramesReused:false,audio:'ambient-default',audioModes:['ambient','silent','vendedora'],mobileReferenceFrames:true,downloadRoute:'/ai-real/jobs/:id/file?download=1'});
 });
 app.post('/ai-real/analyze',async(req,res)=>{
  try{
@@ -704,6 +704,48 @@ app.get('/ai-real/jobs/:id/file',(req,res)=>{
 });
 app.get('/ai-real/download/:id',(req,res)=>{req.query.download='1';const id=String(req.params.id);const j=aiJobs.get(id),p=outPath(id);if(!j||j.status!=='ready'||!fs.existsSync(p))return res.status(404).json({error:'Vídeo IA ainda não está pronto'});return res.download(p,`viral-studio-ia-${id}.mp4`);});
 // ===== FIM V9.0 IA REAL =====
+
+
+// ===== V10.6 FOTO -> CRIATIVO VERTICAL GRATUITO (FFmpeg próprio) =====
+app.post('/creative-photo/render',upload.single('image'),async(req,res)=>{
+  const src=req.file?.path;
+  const clean=s=>String(s||'').replace(/[\r\n]+/g,' ').replace(/\s+/g,' ').trim().slice(0,180);
+  const hook=clean(req.body?.hook), body=clean(req.body?.body), cta=clean(req.body?.cta);
+  const product=clean(req.body?.product||'produto');
+  const duration=Math.max(6,Math.min(15,Number(req.body?.duration)||8));
+  const audio=String(req.body?.audio||'ambient')==='silent'?'silent':'ambient';
+  if(!src)return res.status(400).json({error:'Envie a foto do produto.'});
+  const id='photo-'+crypto.randomUUID(), out=path.join(TMP,id+'.mp4');
+  const ht=path.join(TMP,id+'-hook.txt'), bt=path.join(TMP,id+'-body.txt'), ct=path.join(TMP,id+'-cta.txt');
+  try{
+    ensureStorage(350);
+    fs.writeFileSync(ht,hook||`Olha esse ${product}.`,'utf8');
+    fs.writeFileSync(bt,body||`Veja os detalhes e como ele pode facilitar o dia a dia.`,'utf8');
+    fs.writeFileSync(ct,cta||`Confira os detalhes no carrinho.`,'utf8');
+    const q=p=>String(p).replace(/:/g,'\\:').replace(/'/g,"\\'");
+    const font='/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf';
+    const hEnd=Math.min(2.6,duration*.32), bStart=hEnd, bEnd=Math.max(bStart+.8,duration-1.7), cStart=Math.max(bEnd,duration-1.7);
+    const frames=Math.round(duration*30);
+    const filter=[
+      `[0:v]scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,gblur=sigma=28[bg]`,
+      `[0:v]scale=640:1080:force_original_aspect_ratio=decrease,zoompan=z='min(zoom+0.0008,1.07)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${frames}:s=640x1080:fps=30[fg]`,
+      `[bg][fg]overlay=(W-w)/2:(H-h)/2,drawbox=x=0:y=0:w=iw:h=170:color=black@0.28:t=fill:enable='between(t,0,${hEnd})',drawbox=x=0:y=ih-210:w=iw:h=210:color=black@0.34:t=fill:enable='between(t,${cStart},${duration})',drawtext=fontfile='${font}':textfile='${q(ht)}':fontcolor=white:fontsize=42:line_spacing=8:x=(w-text_w)/2:y=55:box=0:enable='between(t,0,${hEnd})',drawtext=fontfile='${font}':textfile='${q(bt)}':fontcolor=white:fontsize=32:line_spacing=7:x=(w-text_w)/2:y=h-330:box=1:boxcolor=black@0.30:boxborderw=18:enable='between(t,${bStart},${bEnd})',drawtext=fontfile='${font}':textfile='${q(ct)}':fontcolor=white:fontsize=38:line_spacing=8:x=(w-text_w)/2:y=h-155:box=0:enable='between(t,${cStart},${duration})',format=yuv420p[v]`
+    ].join(';');
+    const args=['-y','-hide_banner','-loglevel','error','-loop','1','-i',src];
+    if(audio==='ambient')args.push('-f','lavfi','-i','anoisesrc=color=pink:amplitude=0.015:sample_rate=44100');
+    args.push('-filter_complex',filter,'-map','[v]');
+    if(audio==='ambient')args.push('-map','1:a:0','-c:a','aac','-b:a','96k','-af','afade=t=in:st=0:d=.5,afade=t=out:st='+Math.max(.5,duration-.7)+':d=.7');
+    else args.push('-an');
+    args.push('-t',String(duration),'-c:v','libx264','-preset','ultrafast','-crf','25','-pix_fmt','yuv420p','-movflags','+faststart',out);
+    await run(args);
+    if(!fs.existsSync(out)||fs.statSync(out).size<5000)throw new Error('MP4 não foi criado.');
+    const size=fs.statSync(out).size;
+    res.status(200).set({'Content-Type':'video/mp4','Content-Length':String(size),'Content-Disposition':'inline; filename="viral-studio-criativo.mp4"','Cache-Control':'no-store','Access-Control-Allow-Origin':'*'});
+    const stream=fs.createReadStream(out);stream.pipe(res);stream.on('close',()=>setTimeout(()=>cleanFile(out),5000));
+  }catch(e){res.status(500).json({error:'Não consegui montar o vídeo agora.',detail:String(e.message||e).slice(-600)})}
+  finally{for(const p of [src,ht,bt,ct])if(p)cleanFile(p)}
+});
+// ===== FIM V10.6 =====
 
 app.post('/jobs',(req,res)=>{
   const signature=String(req.body?.signature||'').slice(0,180);
@@ -752,5 +794,5 @@ app.post('/queue/kick',(_req,res)=>{pump();res.json({ok:true,active,queued:queue
 
 cleanupStorage(true);
 setInterval(()=>{const cutoff=Date.now()-90*60*1000;for(const [id,j] of jobs){if((j.finishedAt||j.createdAt)<cutoff&&['ready','error'].includes(j.status)){jobs.delete(id);cleanFile(outPath(id))}}cleanupStorage(false)},10*60*1000).unref?.();
-const server=app.listen(Number(process.env.PORT)||10000,'0.0.0.0',()=>console.log(`Viral Studio Cloud IA Real V9.2 pronto na porta 10000 — Multiplicador de Criativos — fila até 100 — ${MAX_CONCURRENCY} renderizações paralelas`));
+const server=app.listen(Number(process.env.PORT)||10000,'0.0.0.0',()=>console.log(`Viral Studio Cloud V10.6 pronto na porta 10000 — Multiplicador de Criativos — fila até 100 — ${MAX_CONCURRENCY} renderizações paralelas`));
 server.requestTimeout=30*60*1000;server.headersTimeout=31*60*1000;server.keepAliveTimeout=65000;
