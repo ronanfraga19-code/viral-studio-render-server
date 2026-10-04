@@ -66,8 +66,8 @@ function runOut(bin,args,timeoutMs=120000){return new Promise((ok,no)=>{const p=
 function runInput(bin,args,input){return new Promise((ok,no)=>{const p=spawn(bin,args,{stdio:['pipe','pipe','pipe'],windowsHide:true});let out='',err='';p.stdout.on('data',d=>out+=d);p.stderr.on('data',d=>err+=d);p.on('error',no);p.on('close',c=>c===0?ok(out.trim()):no(new Error(err||out||bin+' '+c)));p.stdin.end(input)})}
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
 
-app.get('/',(_q,r)=>r.json({ok:true,service:'Viral Studio Motor Cloud',version:'9.5',maxBatch:20,concurrency:MAX_CONCURRENCY,mode:'cloud-render'}));
-app.get('/health',(_q,r)=>r.json({ok:true,service:'Viral Studio Motor Cloud',engine:'cloud',version:'9.5',mode:'cloud-render',maxBatch:20,concurrency:MAX_CONCURRENCY,active,queued:queue.length,storage:storageSummary(),capabilities:{linkMp4:false,linkInfo:false,linkAnalyze:false,batchZip:false,autoCleanup:true,mobile720p:true,uploadMp4:false,aiReal:true,newVideoFromReference:true,originalFramesReused:false,uploadReferenceOnly:true,rangePlayback:true}}));
+app.get('/',(_q,r)=>r.json({ok:true,service:'Viral Studio Motor Cloud',version:'10.7',maxBatch:20,concurrency:MAX_CONCURRENCY,mode:'cloud-render'}));
+app.get('/health',(_q,r)=>r.json({ok:true,service:'Viral Studio Motor Cloud',engine:'cloud',version:'10.7',mode:'cloud-render',maxBatch:20,concurrency:MAX_CONCURRENCY,active,queued:queue.length,storage:storageSummary(),capabilities:{linkMp4:false,linkInfo:false,linkAnalyze:false,batchZip:false,autoCleanup:true,mobile720p:true,uploadMp4:false,aiReal:true,newVideoFromReference:true,originalFramesReused:false,uploadReferenceOnly:true,rangePlayback:true}}));
 app.get('/storage',(_q,r)=>r.json({ok:true,...storageSummary()}));
 app.post('/storage/cleanup',(_q,r)=>{const freed=
 app.get('/queue/state',(_req,res)=>res.json({ok:true,active,queued:queue.length,items:queue.slice(0,20)}));
@@ -747,6 +747,72 @@ app.post('/creative-photo/render',upload.single('image'),async(req,res)=>{
 });
 // ===== FIM V10.6 =====
 
+
+// ===== V10.7 DIRETOR IA — editar depois de gerar =====
+app.get('/director/capabilities',(_req,res)=>res.json({
+  ok:true,version:'10.7',
+  free:{audio:true,cta:true,duration:true,reframe:true,variant:true},
+  generative:{modelChange:false,sceneChange:false},
+  note:'Troca real de pessoa/cenário exige motor generativo externo; o renderizador gratuito não simula isso.'
+}));
+
+app.post('/director/render-free',upload.single('video'),async(req,res)=>{
+  const src=req.file?.path;
+  if(!src)return res.status(400).json({error:'Envie um vídeo base.'});
+  const duration=Math.max(6,Math.min(15,Number(req.body?.duration)||8));
+  const audio=String(req.body?.audio||'keep');
+  const cta=String(req.body?.cta||'keep');
+  const movement=String(req.body?.movement||'natural');
+  const variant=String(req.body?.variant||'balanced');
+  const id='director-'+crypto.randomUUID(),out=path.join(TMP,id+'.mp4'),txt=path.join(TMP,id+'.txt');
+  try{
+    ensureStorage(350);
+    const hasA=await hasAudio(src);
+    const ctaMap={cart:'Confira no carrinho',details:'Veja os detalhes',offer:'Confira a oferta'};
+    const ctaText=ctaMap[cta]||'';
+    if(ctaText)fs.writeFileSync(txt,ctaText,'utf8');
+    const font='/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf';
+    const speed=variant==='fast'?1.12:variant==='close'?0.98:1.0;
+    const baseScale=movement==='detail'?'scale=820:1458:force_original_aspect_ratio=increase,crop=720:1280':'scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280';
+    const vf=[baseScale,'setsar=1','fps=30'];
+    if(variant==='close')vf.push("zoompan=z='min(zoom+0.0005,1.04)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=720x1280:fps=30");
+    if(ctaText)vf.push(`drawbox=x=0:y=h-190:w=iw:h=190:color=black@0.34:t=fill:enable='gte(t,${Math.max(0,duration-1.8)})'`,`drawtext=fontfile='${font}':textfile='${txt.replace(/:/g,'\\:').replace(/'/g,"\\'")}':fontcolor=white:fontsize=38:x=(w-text_w)/2:y=h-120:enable='gte(t,${Math.max(0,duration-1.8)})'`);
+    const args=['-y','-hide_banner','-loglevel','error','-i',src,'-t',String(duration),'-vf',vf.join(','),'-c:v','libx264','-preset','ultrafast','-crf','24','-pix_fmt','yuv420p','-movflags','+faststart'];
+    if(audio==='silent')args.push('-an');
+    else if(audio==='ambient')args.splice(7,0,'-f','lavfi','-i','anoisesrc=color=pink:amplitude=0.012:sample_rate=44100');
+    if(audio==='ambient')args.push('-map','0:v:0','-map','1:a:0','-c:a','aac','-b:a','96k','-af','afade=t=in:st=0:d=.25,afade=t=out:st='+Math.max(.4,duration-.6)+':d=.6');
+    else if(audio==='keep'&&hasA)args.push('-map','0:v:0','-map','0:a:0','-c:a','aac','-b:a','128k');
+    else if(audio==='keep'&&!hasA)args.push('-an');
+    args.push(out);
+    await run(args);
+    if(!fs.existsSync(out)||fs.statSync(out).size<5000){
+      // ffmpeg args above write final output only after append; fallback builds cleanly
+      throw new Error('MP4 não foi criado.');
+    }
+    const size=fs.statSync(out).size;
+    res.status(200).set({'Content-Type':'video/mp4','Content-Length':String(size),'Content-Disposition':'inline; filename="viral-studio-diretor.mp4"','Cache-Control':'no-store','Access-Control-Allow-Origin':'*'});
+    const stream=fs.createReadStream(out);stream.pipe(res);stream.on('close',()=>setTimeout(()=>cleanFile(out),5000));
+  }catch(e){
+    // second pass with simpler ffmpeg to maximize iPhone/Render reliability
+    try{
+      cleanFile(out);
+      const a=['-y','-hide_banner','-loglevel','error','-i',src,'-t',String(duration),'-vf','scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,setsar=1,fps=30','-c:v','libx264','-preset','ultrafast','-crf','25','-pix_fmt','yuv420p','-movflags','+faststart'];
+      if(audio==='silent')a.push('-an');else if(await hasAudio(src))a.push('-c:a','aac','-b:a','128k');else a.push('-an');
+      a.push(out);await run(a);
+      const size=fs.statSync(out).size;res.status(200).set({'Content-Type':'video/mp4','Content-Length':String(size),'Content-Disposition':'inline; filename="viral-studio-diretor.mp4"','Cache-Control':'no-store','Access-Control-Allow-Origin':'*'});const stream=fs.createReadStream(out);stream.pipe(res);stream.on('close',()=>setTimeout(()=>cleanFile(out),5000));
+    }catch(e2){res.status(500).json({error:'Não consegui criar a nova versão agora.',clientMessage:'Não consegui criar a nova versão. Tente novamente com um vídeo menor.',detail:String(e2.message||e2).slice(-500)})}
+  }finally{cleanFile(src);cleanFile(txt)}
+});
+
+app.post('/director/render-ai',upload.single('video'),async(req,res)=>{
+  if(req.file?.path)cleanFile(req.file.path);
+  return res.status(409).json({
+    error:'Motor generativo não conectado',
+    clientMessage:'Troca real de modelo ou cenário ainda precisa do motor de vídeo IA. Escolha “Manter modelo” e “Manter cenário” para usar as edições disponíveis agora.'
+  });
+});
+// ===== FIM V10.7 DIRETOR IA =====
+
 app.post('/jobs',(req,res)=>{
   const signature=String(req.body?.signature||'').slice(0,180);
   if(signature&&signatures.has(signature)){const old=jobs.get(signatures.get(signature));if(old&&old.status!=='error')return res.status(200).json({ok:true,id:old.id,status:old.status,deduplicated:true});signatures.delete(signature)}
@@ -794,5 +860,5 @@ app.post('/queue/kick',(_req,res)=>{pump();res.json({ok:true,active,queued:queue
 
 cleanupStorage(true);
 setInterval(()=>{const cutoff=Date.now()-90*60*1000;for(const [id,j] of jobs){if((j.finishedAt||j.createdAt)<cutoff&&['ready','error'].includes(j.status)){jobs.delete(id);cleanFile(outPath(id))}}cleanupStorage(false)},10*60*1000).unref?.();
-const server=app.listen(Number(process.env.PORT)||10000,'0.0.0.0',()=>console.log(`Viral Studio Cloud V10.6 pronto na porta 10000 — Multiplicador de Criativos — fila até 100 — ${MAX_CONCURRENCY} renderizações paralelas`));
+const server=app.listen(Number(process.env.PORT)||10000,'0.0.0.0',()=>console.log(`Viral Studio Cloud V10.7 pronto na porta 10000 — Multiplicador de Criativos — fila até 100 — ${MAX_CONCURRENCY} renderizações paralelas`));
 server.requestTimeout=30*60*1000;server.headersTimeout=31*60*1000;server.keepAliveTimeout=65000;
